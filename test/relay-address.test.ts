@@ -72,7 +72,7 @@ describe("the address is derived from the owning user", () => {
       expect(identity?.kind).toBe("name");
     } else {
       expect(identity?.kind).toBe("uid");
-      expect(identity?.kind === "uid" && identity.uid).toBe(process.getuid());
+      expect(identity?.kind === "uid" && identity.uid).toBe(process.getuid?.());
     }
   });
 

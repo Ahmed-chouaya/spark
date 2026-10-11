@@ -9,11 +9,11 @@
 
 ## 2. The relay
 
-- [ ] 2.1 Implement the relay as reading a payload from standard input, delivering it to the channel, and exiting, and verify a payload sent to it arrives unchanged
-- [ ] 2.2 Verify the relay exits without waiting for a response, acknowledgement, or timeout, and that a companion that never reads the delivered payload does not delay the relay
-- [ ] 2.3 Verify the relay exits successfully when no companion is listening, when the channel does not exist, and when the input is unusable, and that nothing unusable reaches the companion's state selection
-- [ ] 2.4 Add a test that reads the relay's source and asserts it contains no interpretation of the host's event vocabulary, so a second implementation of that contract cannot be added quietly
-- [ ] 2.5 Add a test that the relay starts and delivers on a machine with no project dependencies present, and verify it does not require a language runtime or installed package
+- [x] 2.1 Implement the relay as reading a payload from standard input, delivering it to the channel, and exiting, and verify a payload sent to it arrives unchanged
+- [x] 2.2 Verify the relay exits without waiting for a response, acknowledgement, or timeout, and that a companion that never reads the delivered payload does not delay the relay
+- [x] 2.3 Verify the relay exits successfully when no companion is listening, when the channel does not exist, and when the input is unusable, and that nothing unusable reaches the companion's state selection
+- [x] 2.4 Add a test that reads the relay's source and asserts it contains no interpretation of the host's event vocabulary, so a second implementation of that contract cannot be added quietly
+- [x] 2.5 Add a test that the relay starts and delivers on a machine with no project dependencies present, and verify it does not require a language runtime or installed package
 
 ## 3. Hook installation
 

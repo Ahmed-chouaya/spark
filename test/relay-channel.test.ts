@@ -19,8 +19,11 @@ import { openChannel, type CompanionChannel } from "../src/relay/channel";
 
 const open: CompanionChannel[] = [];
 
-const scratch = (): string =>
-  mkdirSync(join(tmpdir(), `spark-channel-${process.pid}-${randomSuffix()}`), { recursive: true });
+const scratch = (): string => {
+  const directory = join(tmpdir(), `spark-channel-${process.pid}-${randomSuffix()}`);
+  mkdirSync(directory, { recursive: true });
+  return directory;
+};
 
 const randomSuffix = (): string => Math.random().toString(36).slice(2);
 
@@ -190,7 +193,7 @@ function attemptAsAnotherUser(address: string): {
     return { attempted: false, connected: false, reason: "user namespaces are a Unix facility" };
   }
 
-  const uid = process.getuid();
+  const uid = process.getuid?.();
   const subuid = firstSubordinateUid();
   if (uid === undefined || subuid === null) {
     return { attempted: false, connected: false, reason: "no subordinate uid range is allocated" };
