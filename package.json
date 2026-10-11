@@ -14,6 +14,8 @@
     "relay:build": "cargo build --release --manifest-path relay/Cargo.toml",
     "relay:install": "node scripts/relay-install.ts",
     "relay:uninstall": "node scripts/relay-install.ts uninstall",
+    "companion": "vite-node scripts/spark-companion.ts",
+    "relay:verify": "vite-node scripts/relay-integration.ts",
     "verify": "npm run extract:anchors && npm run typecheck && npm run test",
     "test:e2e": "e2e run"
   },

@@ -33,8 +33,8 @@
 
 ## 5. Integration check
 
-- [ ] 5.1 Install the hooks against the real host agent on this machine, start the companion, and verify in one pass that a session started in a terminal reaches the surface without being supplied
-- [ ] 5.2 Verify a blocked session surfaces the escalation through the relay, and verify the decision card cannot yet be answered from it, which is the documented boundary of this change
-- [ ] 5.3 Stop the companion, invoke a hook, and verify the host agent proceeds unaffected and no error is surfaced
-- [ ] 5.4 Uninstall and verify the host's configuration returns to its prior state and the backup remains recoverable
-- [ ] 5.5 Document in the relay's source why it translates nothing and why it exits without waiting, and verify each claim is stated where a future editor will read it
+- [x] 5.1 Install the hooks against the real host agent on this machine, start the companion, and verify in one pass that a session started in a terminal reaches the surface without being supplied
+- [x] 5.2 Verify a blocked session surfaces the escalation through the relay, and verify the decision card cannot yet be answered from it, which is the documented boundary of this change
+- [x] 5.3 Stop the companion, invoke a hook, and verify the host agent proceeds unaffected and no error is surfaced
+- [x] 5.4 Uninstall and verify the host's configuration returns to its prior state and the backup remains recoverable
+- [x] 5.5 Document in the relay's source why it translates nothing and why it exits without waiting, and verify each claim is stated where a future editor will read it
