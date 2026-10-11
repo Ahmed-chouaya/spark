@@ -12,13 +12,38 @@ platform-conditional visibility rule.
 This spike exists so the same question can be asked on **Windows**, where it has never
 been run, and on **macOS**, which cannot be asked from Linux at all.
 
+## It has already been wrong twice about Linux
+
+Both were found by running it somewhere it was not written, which is the argument for
+running it:
+
+- **`tauri-build` needs `icons/icon.ico` on Windows.** It compiles a resource file into the
+  executable and Linux has no equivalent step, so the spike built here with only a PNG and
+  failed on the first machine it was meant for.
+- **The relay test suite is POSIX-only.** Path separators, a `spark-relay` binary name with
+  no `.exe`, and Unix socket paths passed to a Windows channel — 21 failures, all in test
+  code, none in the code under test.
+
+A spike answers a question about *other* machines, so anything it assumes about the machine
+it was written on is a defect in the spike.
+
 ## Run it
 
 ```
-rustup toolchain install stable        # once
 cd spikes/overlay/src-tauri
 cargo run --release
 ```
+
+**If it fails on Windows with `icons/icon.ico not found`**, regenerate it and rebuild:
+
+```
+python icons/make-icon.py        # or: python3 icons/make-icon.py
+cargo build --release
+```
+
+The icon is committed so this should not be necessary — it is generated rather than
+hand-drawn because a 32-bit BMP icon is not something to author by hand, and the generator
+is short enough to read.
 
 It opens a transparent, borderless, always-on-top panel with the mascot in it, prints a
 report, and exits after about 26 seconds.

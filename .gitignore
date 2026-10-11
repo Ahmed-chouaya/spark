@@ -10,3 +10,4 @@ node_modules
 .e2e/videos/
 relay/target/
 spikes/*/src-tauri/target/
+spikes/*/src-tauri/gen/
