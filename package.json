@@ -5,10 +5,15 @@
   "type": "module",
   "description": "Spark mascot — state vector library",
   "scripts": {
+    "dev": "vite",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "extract:anchors": "node scripts/extract-anchors.mjs",
+    "probe:capability": "node scripts/probe-capability.mjs",
+    "relay:build": "cargo build --release --manifest-path relay/Cargo.toml",
+    "relay:install": "node scripts/relay-install.ts",
+    "relay:uninstall": "node scripts/relay-install.ts uninstall",
     "verify": "npm run extract:anchors && npm run typecheck && npm run test",
     "test:e2e": "e2e run"
   },
@@ -29,6 +34,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "typescript": "^5.7.2",
+    "vite": "^5.4.21",
     "vitest": "^2.1.8",
     "zod": "^4.1.8"
   },

@@ -17,12 +17,12 @@
 
 ## 3. Hook installation
 
-- [ ] 3.1 Implement installation that does nothing until explicitly requested, and verify an install with no explicit request leaves the host's configuration untouched
-- [ ] 3.2 Show the proposed configuration change before writing anything, and verify declining it leaves the file exactly as it was
-- [ ] 3.3 Back up the host's configuration before changing it, and verify the prior configuration is recoverable after an install
-- [ ] 3.4 Merge the companion's hooks with existing ones rather than replacing them, and verify a pre-existing hook the companion did not add survives an install
-- [ ] 3.5 Make installation idempotent, and verify installing twice leaves one copy of each companion hook
-- [ ] 3.6 Add tests covering install, decline, backup, merge with existing hooks and repeat install, and verify each leaves the configuration in the state the requirement names
+- [x] 3.1 Implement installation that does nothing until explicitly requested, and verify an install with no explicit request leaves the host's configuration untouched
+- [x] 3.2 Show the proposed configuration change before writing anything, and verify declining it leaves the file exactly as it was
+- [x] 3.3 Back up the host's configuration before changing it, and verify the prior configuration is recoverable after an install
+- [x] 3.4 Merge the companion's hooks with existing ones rather than replacing them, and verify a pre-existing hook the companion did not add survives an install
+- [x] 3.5 Make installation idempotent, and verify installing twice leaves one copy of each companion hook
+- [x] 3.6 Add tests covering install, decline, backup, merge with existing hooks and repeat install, and verify each leaves the configuration in the state the requirement names
 
 ## 4. Wiring sessions
 

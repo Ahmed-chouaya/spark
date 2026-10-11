@@ -19,6 +19,7 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
     "types": [
       "node",
       "vitest/globals"
@@ -26,7 +27,9 @@
   },
   "include": [
     "src",
+    "src/dev",
     "test",
+    "scripts/relay-install.ts",
     "vitest.config.ts"
   ]
 }
