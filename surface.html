@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Escalation surface harness</title>
+  </head>
+  <body>
+    <!--
+      The surface harness. Served beside the state harness at
+      `/surface.html`; it exists so the escalation surface can be driven in a
+      real browser, which is the only place the claims about this platform's
+      compositor can actually be checked.
+    -->
+    <div id="root"></div>
+    <script type="module" src="/src/dev/surface-main.tsx"></script>
+  </body>
+</html>

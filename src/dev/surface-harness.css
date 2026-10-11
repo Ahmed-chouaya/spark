@@ -1,0 +1,83 @@
+/*
+ * Layout for the escalation surface harness.
+ *
+ * The surface sizes itself from its content; nothing here sets a width on it,
+ * which is deliberate — a harness that padded the surface to a box would hide
+ * exactly the sizing question this page exists to look at.
+ */
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+/*
+ * The persistent branch, on a platform that cannot hold a persistent surface.
+ *
+ * The harness has to be able to show the ambient behaviour somewhere, because a
+ * machine can only demonstrate one branch of a two-branch rule at a time. The
+ * styling here is the *harness's*: in the product the ambient surface is a
+ * window the compositor positions, and this styling does not stand in for it.
+ * It is here so the two branches can be compared, and the comparison is the
+ * point — the same component, one branch visible and one absent.
+ */
+[data-testid="escalation-surface"] {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  /* Pinned to a corner the way a persistent surface would sit, so the ambient
+     state is looked at where it would actually be looked at. */
+  position: sticky;
+  top: 16px;
+}
+
+[data-testid="decision-surface"] {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  max-inline-size: 32ch;
+}
+
+[data-testid="decision-surface"] h2 {
+  font-size: 14px;
+  margin: 0 0 4px;
+  color: var(--ink);
+}
+
+[data-testid="decision-effects"] {
+  margin: 8px 0;
+  padding-inline-start: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+[data-testid="decision-actions"] {
+  display: flex;
+  gap: 8px;
+}
+
+[data-testid="decision-actions"] button {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+[data-testid="decision-deny"] {
+  border-color: #7a3350;
+}
+
+.controls button {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}

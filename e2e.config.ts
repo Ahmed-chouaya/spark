@@ -14,8 +14,25 @@ export default {
     engine: web(),
     app: {
       url: process.env.APP_URL ?? 'http://localhost:3000',
-      // Or let the runner start the dev server:
-      // command: { executable: 'npm', args: ['run', 'dev'] },
+      // The mascot harness. `vite.config.ts` pins this to the same address
+      // with `strictPort`, so a conflict stops the server rather than moving
+      // it somewhere this URL does not point.
+      command: {
+        executable: 'npm',
+        args: ['run', 'dev'],
+        // Reuse a dev server the developer already has open.
+        //
+        // Without this the two are mutually exclusive: `command` wants to spawn
+        // one, `strictPort` guarantees a second cannot bind, and a run against an
+        // already-serving address fails `APP_ALREADY_RUNNING` rather than doing
+        // anything useful. That is the normal state while developing, not an
+        // edge case.
+        //
+        // Staleness is not a risk for this target: Vite serves from source, so
+        // the running process is the current code. And the flag is self-limiting
+        // for CI, which ignores it and always starts the command.
+        reuseExisting: true,
+      },
     },
   }],
 } satisfies E2EConfig;

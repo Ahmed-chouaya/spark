@@ -1,0 +1,126 @@
+/*
+ * Legibility only. This page is deleted when the real application exists, so
+ * anything added here is maintenance on scaffolding.
+ */
+
+:root {
+  color-scheme: dark;
+  --ink: #e8e8f2;
+  --muted: #8f8fa8;
+  --line: #26263a;
+  --surface: #11111c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* An inline SVG sits on the text baseline and carries descender space below
+   it, which would push the mascots off the shared floor line. */
+svg {
+  display: block;
+}
+
+body {
+  margin: 0;
+  background: #0b0b14;
+  color: var(--ink);
+  font: 14px/1.5 ui-sans-serif, system-ui, sans-serif;
+}
+
+main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+h1 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 16px;
+}
+
+.controls {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+select {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.readout {
+  color: var(--muted);
+  margin: 12px 0 20px;
+}
+
+.readout output {
+  color: var(--ink);
+  font-family: ui-monospace, monospace;
+}
+
+.grid {
+  display: grid;
+  /* Wide enough for the two renderings to sit side by side without the small
+     one being pushed out of the card — the comparison it exists for is
+     worthless if one of the two being compared is clipped. */
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.card h2 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+
+/*
+ * One card height for every state, contents pinned to its bottom edge.
+ *
+ * The height is fixed rather than content-derived, and the renderings sit at
+ * the bottom, so every state in the grid stands on the same floor line at the
+ * same scale. That is what makes this view a comparison rather than a display:
+ * an apparent difference in size is then a difference in the artwork, and not
+ * an artefact of how the page happened to lay things out.
+ */
+.card-canvas {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 16px;
+  height: 170px;
+}
+
+.render[data-active] {
+  outline: 1px dashed var(--muted);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.single {
+  display: flex;
+  justify-content: center;
+}
+
+.single .card {
+  min-width: 360px;
+}
