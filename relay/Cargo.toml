@@ -15,8 +15,8 @@ path = "src/main.rs"
 # invoked as a bare command by another program, so anything it has to resolve at
 # start-up is something that can fail to resolve — and a relay that fails to
 # start does not look like a companion problem, it looks like the user's agent
-# breaking. `libc` and `windows-sys` are build-time only and are compiled in;
-# the result links against nothing but libc.
+# breaking. `libc` is compiled in on Unix and the Windows side needs nothing
+# beyond the standard library, so the result links against libc alone.
 [dependencies]
 
 [target.'cfg(unix)'.dependencies]
