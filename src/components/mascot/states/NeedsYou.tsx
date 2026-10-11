@@ -4,7 +4,13 @@
  * The one state denoting an agent that has stopped and is waiting on the user.
  *
  * Extracted from the 12-cell sheet, cell (2,2)
- * labelled "PAUSED".
+ * labelled "NOTIFICATION".
+ *
+ * The original brief specified the `PAUSED` cell for this state. `PAUSED` is a
+ * plain body with no accessories — effectively indistinguishable from `idle`,
+ * which defeats the only job this state has. `NOTIFICATION` carries a bell
+ * badge and a three-dot trail, so it reads as "something wants you" at a
+ * glance with no new artwork required. `PAUSED` remains unused.
  *
  * Renders into the shared canonical canvas, positioned by its derived anchor.
  */

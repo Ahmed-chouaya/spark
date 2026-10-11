@@ -15,17 +15,49 @@ describe("component API", () => {
     expect(svgOf(container).getAttribute("viewBox")).toBe(`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`);
   });
 
-  it("derives its default height from the canvas aspect ratio", () => {
+  it("states the canvas aspect ratio rather than a fixed default height", () => {
     const { container } = render(<Mascot state="idle" />);
     const svg = svgOf(container);
     expect(svg.getAttribute("width")).toBe(String(DEFAULT_WIDTH));
     expect(DEFAULT_WIDTH).toBe(82);
-    expect(svg.getAttribute("height")).toBe(String(DEFAULT_HEIGHT));
-    // height follows from the ratio rather than being typed in by hand
+    // No height attribute: a fixed one is only correct at one width, so the
+    // ratio is stated and the height follows whatever width is in effect.
+    expect(svg.getAttribute("height")).toBeNull();
+    expect(svg.style.aspectRatio).toBe(`${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`);
+    // DEFAULT_HEIGHT remains a true statement about DEFAULT_WIDTH...
     expect(DEFAULT_HEIGHT).toBeCloseTo((82 * CANVAS_HEIGHT) / CANVAS_WIDTH, 10);
-    const w = Number(svg.getAttribute("width"));
-    const h = Number(svg.getAttribute("height"));
-    expect(h / w).toBeCloseTo(CANVAS_HEIGHT / CANVAS_WIDTH, 10);
+    // ...but the rendered element no longer depends on it, which is the fix.
+    expect(svg.getAttribute("height")).not.toBe(String(DEFAULT_HEIGHT));
+  });
+
+  it("keeps the ratio whatever width it is given", () => {
+    // The bug this pins: a constant default height meant `width={320}` still
+    // emitted `height="58.5"`, so the dev harness had to compute and pass its
+    // own height on every call.
+    for (const width of [16, 32, 82, 160, 320, 1024]) {
+      const { container, unmount } = render(<Mascot state="idle" width={width} />);
+      const svg = svgOf(container);
+
+      expect(svg.getAttribute("width"), `width ${width}`).toBe(String(width));
+      // No width-specific height is emitted, so the browser cannot letterbox.
+      expect(svg.getAttribute("height"), `width ${width}`).toBeNull();
+      expect(svg.style.aspectRatio, `width ${width}`).toBe(
+        `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`,
+      );
+
+      unmount();
+    }
+  });
+
+  it("lets a caller style override the aspect ratio", () => {
+    const { container } = render(
+      <Mascot state="idle" style={{ aspectRatio: "1 / 1", opacity: 0.5 }} />,
+    );
+    const svg = svgOf(container);
+    // The caller's style wins rather than being clobbered, and their other
+    // declarations survive alongside it.
+    expect(svg.style.aspectRatio).toBe("1 / 1");
+    expect(svg.style.opacity).toBe("0.5");
   });
 
   it("honours explicit sizing props", () => {

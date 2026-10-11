@@ -26,8 +26,18 @@ export const ANCHOR_Y = 13.3;
 /** The one canvas declaration any state may render into. */
 export const CANVAS_VIEWBOX = `0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`;
 
-/** Default rendered width; the default height follows from the canvas ratio. */
+/** Default rendered width. The rendered height follows the canvas ratio from it. */
 export const DEFAULT_WIDTH = 82;
+
+/**
+ * The height `DEFAULT_WIDTH` implies.
+ *
+ * A convenience for callers sizing against a number — and what the mascot's own
+ * tests assert the ratio is. It is **not** the component's default height: a
+ * fixed height is only correct at one width, so `Mascot` states the ratio as
+ * `aspect-ratio` instead and lets the height follow whatever width is in effect.
+ * Do not reach for this to size a rendering whose width is not `DEFAULT_WIDTH`.
+ */
 export const DEFAULT_HEIGHT = (DEFAULT_WIDTH * CANVAS_HEIGHT) / CANVAS_WIDTH;
 
 /**

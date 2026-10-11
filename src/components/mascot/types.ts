@@ -15,9 +15,13 @@ import type { SVGProps } from "react";
  * | `alert`    | (1,3)      | ERROR         |
  * | `listening`| (0,2)      | SEARCHING     |
  * | `tired`    | (2,3)      | DO NOT DISTURB|
- * | `needsYou` | (2,2)      | PAUSED        |
+ * | `needsYou` | (2,2)      | NOTIFICATION  |
  *
- * The remaining sheet cells (UPDATE, TIMER, NOTIFICATION) are not used.
+ * `needsYou` uses the `NOTIFICATION` cell rather than `PAUSED`: `PAUSED` is a plain
+ * body with no accessories, indistinguishable from `idle`, whereas `NOTIFICATION`
+ * carries a bell badge and dot trail that signal "something wants you" at a glance.
+ *
+ * The remaining sheet cells (UPDATE, TIMER, PAUSED) are not used.
  */
 export const MASCOT_STATES = [
   "idle",

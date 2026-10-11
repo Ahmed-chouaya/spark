@@ -8,7 +8,12 @@ import { Listening } from "./states/Listening";
 import { Tired } from "./states/Tired";
 import { NeedsYou } from "./states/NeedsYou";
 import type { ComponentType } from "react";
-import { CANVAS_VIEWBOX, DEFAULT_HEIGHT, DEFAULT_WIDTH } from "./canvas";
+import {
+  CANVAS_HEIGHT,
+  CANVAS_VIEWBOX,
+  CANVAS_WIDTH,
+  DEFAULT_WIDTH,
+} from "./canvas";
 import type { MascotProps, MascotState, MascotVectorInternalProps } from "./types";
 
 /**
@@ -69,6 +74,25 @@ const LABELS: Record<MascotState, string> = {
  */
 export function Mascot({ state = "idle", ...rest }: MascotProps) {
   const Vector = MASCOT_VECTORS[state];
+
+  // The default height follows the width actually in effect.
+  //
+  // A fixed default height cannot: the canvas ratio is fixed but the rendered
+  // width is the caller's choice, so one constant is correct for exactly one
+  // width and letterboxes the rest. `<Mascot width={320} />` used to emit
+  // `height="58.5"` — the 82px default — which is why the dev harness had to
+  // compute and pass its own height on every call.
+  const width = rest.width ?? DEFAULT_WIDTH;
+
+  // Aspect-ratio is the honest expression of "derive it": the browser resolves
+  // it against whatever the element ends up being, including when CSS overrides
+  // the width attribute, which a computed pixel value would not survive. With a
+  // viewBox present, an omitted height already defaults to 100% in SVG 2 and in
+  // every current engine — this states the ratio explicitly rather than relying
+  // on that, because relying on it silently letterboxes if the viewBox is ever
+  // removed.
+  const ratio = `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`;
+
   return (
     // The canvas declaration is applied here, not accepted from the caller: it
     // is the component's own rendering contract. `MascotProps` omits `viewBox`,
@@ -76,8 +100,8 @@ export function Mascot({ state = "idle", ...rest }: MascotProps) {
     <Vector
       {...rest}
       viewBox={CANVAS_VIEWBOX}
-      width={rest.width ?? DEFAULT_WIDTH}
-      height={rest.height ?? DEFAULT_HEIGHT}
+      width={width}
+      style={{ aspectRatio: ratio, ...rest.style }}
       role={rest.role ?? "img"}
       aria-label={rest["aria-label"] ?? LABELS[state]}
       data-state={state}
