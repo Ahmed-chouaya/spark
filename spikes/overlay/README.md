@@ -75,3 +75,20 @@ Tests and probes answer three of the four questions. Only you can answer these:
 Answer goes in the commit message, and `app-shell` gets written against it rather than
 against an assumption. If the answer is "no", the capability probe already handles it and
 `app-shell` needs no change — that is the point of having written the probe first.
+
+## Result, per platform
+
+| | GNOME Wayland | Windows 11 | macOS |
+|---|---|---|---|
+| stays above other windows | **no** | **yes** | not measured |
+| takes focus when it appears | **yes, ~2s** | **no** | not measured |
+| requested size honoured | **no** (200x239 for 140x150) | not measured | not measured |
+| `set_position` honoured | **no** (OK, stays 0,0) | not measured | not measured |
+
+**Windows 11: a persistent surface works.** Verified by observation on real hardware — it
+stayed above every window tested including a maximised one, and did not take focus while
+the user typed elsewhere.
+
+**macOS: not measured.** No Mac was available. Treat it as untested rather than working.
+
+Full table and the reasoning: [`docs/platform-findings.md`](../../docs/platform-findings.md).
