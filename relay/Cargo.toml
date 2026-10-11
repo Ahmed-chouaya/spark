@@ -1,0 +1,32 @@
+[package]
+name = "spark-relay"
+version = "0.1.0"
+edition = "2021"
+description = "Forwards a host agent's hook payload to the Spark companion, and exits."
+publish = false
+
+[[bin]]
+name = "spark-relay"
+path = "src/main.rs"
+
+# No dependencies.
+#
+# This is a load-bearing property, not a preference for minimalism. The relay is
+# invoked as a bare command by another program, so anything it has to resolve at
+# start-up is something that can fail to resolve — and a relay that fails to
+# start does not look like a companion problem, it looks like the user's agent
+# breaking. `libc` and `windows-sys` are build-time only and are compiled in;
+# the result links against nothing but libc.
+[dependencies]
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[profile.release]
+# A static binary, so the file the host agent is configured to run has nothing
+# in it that can fail to resolve on the machine it is copied to.
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
