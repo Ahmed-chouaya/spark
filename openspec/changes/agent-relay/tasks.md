@@ -26,10 +26,10 @@
 
 ## 4. Wiring sessions
 
-- [ ] 4.1 Feed received payloads through the existing host adapter into the state selection's fold, and verify a session started by the host reaches the companion with no caller supplying it
-- [ ] 4.2 Verify the reduction is unchanged for host-sourced sessions, covering precedence, primary selection, classification and the escalation rule, and that no separate path decides the rendered state
-- [ ] 4.3 Verify adding a second host agent requires no change to the relay, and that the translation remains in one place per host
-- [ ] 4.4 Verify the relay path leaves the caller-supplied session route working unchanged, so the companion is still usable with no relay installed
+- [x] 4.1 Feed received payloads through the existing host adapter into the state selection's fold, and verify a session started by the host reaches the companion with no caller supplying it
+- [x] 4.2 Verify the reduction is unchanged for host-sourced sessions, covering precedence, primary selection, classification and the escalation rule, and that no separate path decides the rendered state
+- [x] 4.3 Verify adding a second host agent requires no change to the relay, and that the translation remains in one place per host
+- [x] 4.4 Verify the relay path leaves the caller-supplied session route working unchanged, so the companion is still usable with no relay installed
 
 ## 5. Integration check
 
