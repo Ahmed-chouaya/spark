@@ -1,5 +1,11 @@
 schema: spec-driven
 
+rules:
+  tasks:
+    - End every task with a commit
+  tests:
+    - include a test with the e2e framework installed in the project wherever the change has a rendered surface
+    - transport-only and headless changes are exempt, and must say so in their summary with the verification they ran instead
 # Project context (optional)
 # This is shown to AI when creating artifacts.
 # Add your tech stack, conventions, style guides, domain knowledge, etc.
@@ -18,6 +24,8 @@ schema: spec-driven
 #       - Always include a "Non-goals" section
 #     tasks:
 #       - Break tasks into chunks of max 2 hours
+#     tests:
+#       - Always include a test with e2e framework (the one installed in the project)
 
 # Per-operation guidance (optional)
 # Add advisory guidance for how apply and archive work should be conducted.

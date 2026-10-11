@@ -21,8 +21,13 @@ concentrated rather than shy.
   render into one shared canonical canvas (21 x 15.2 units) via a per-axis translation
   derived at build time. A per-state tight crop must not be reintroduced, in whole or in
   part, by a later implementation pass.
-- Introduce a ninth state, `needsYou`, drawn from the sheet's `PAUSED` cell. It is the
-  only state representing an agent that is stopped and waiting on the user.
+- Introduce a ninth state, `needsYou`, drawn from the sheet's `NOTIFICATION` cell rather
+  than `PAUSED`. It is the only state representing an agent that is stopped and waiting on
+  the user. `PAUSED` was the original pick and is a plain body with no accessories at all —
+  effectively indistinguishable from `idle`, which would defeat the one job this state has,
+  which is instant recognition. `NOTIFICATION` carries a bell badge and dot trail, so the
+  state reads as "something wants you" at a glance with no new artwork required.
+  `PAUSED` remains unused.
 - **BREAKING** — rename `shy` to `focused`. The cell it names (slanted eyes, strain marks)
   reads as concentrated, not shy; shipping a name that contradicts the art misleads
   whoever wires up "compact mode" later.
@@ -62,7 +67,7 @@ None. This project has no existing specs.
 
 - `src/components/mascot/states/` — all eight existing state components change to render
   into the canonical canvas; `Shy.tsx` becomes `Focused.tsx`; a new `NeedsYou.tsx` is
-  added from the sheet's `PAUSED` cell.
+  added from the sheet's `NOTIFICATION` cell.
 - `src/components/mascot/types.ts` — state list gains `needsYou`, drops `shy` for
   `focused`; props type omits `viewBox`.
 - `src/components/mascot/Mascot.tsx` and `index.ts` — wrapper, defaults and exports.

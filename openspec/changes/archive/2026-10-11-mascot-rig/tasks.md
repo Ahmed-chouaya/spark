@@ -14,7 +14,7 @@ runner, so every verification below is otherwise unrunnable.
 
 - [x] 2.1 Rename `Shy.tsx` to `Focused.tsx` — component, exported component symbol and exported viewBox constant — and verify the project typechecks with no `Shy` symbol remaining
 - [x] 2.2 Replace `shy` with `focused` in the `MASCOT_STATES` union and verify the exported type no longer accepts `shy` and does accept `focused`
-- [x] 2.3 Extract the sheet's `PAUSED` cell into a `NeedsYou.tsx` state component matching the existing four-part structure (glow, body, eyes, fx), namespaced paint ids, and verify it renders
+- [x] 2.3 Extract the sheet's `NOTIFICATION` cell into a `NeedsYou.tsx` state component matching the existing four-part structure (glow, body, eyes, fx), namespaced paint ids, and verify it renders
 - [x] 2.4 Add `needsYou` to `MASCOT_VECTORS` and `MASCOT_STATES` and verify all nine states resolve to a component and to an accessible label
 - [x] 2.5 Update `index.ts` to export the nine components and their viewBox constants under the new names, and verify no stale `Shy` export remains
 

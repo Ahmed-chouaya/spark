@@ -91,7 +91,7 @@ render. 15.2 raises that to 0.77 units.
 
 ### Canvas width 21.3, not 21
 
-The PAUSED cell carries a notification-bell badge whose right edge reaches 21.265
+The NOTIFICATION cell carries a notification-bell badge whose right edge reaches 21.265
 once its visor is anchored at 10.5, overflowing a 21-unit canvas. The original 21
 figure rested on the "needsYou has no fx at all" assumption, which the extracted
 artwork does not support — the cell has a bell badge and a three-dot trail. The
