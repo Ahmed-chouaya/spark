@@ -83,6 +83,14 @@ const DIRECTORY_MODE: u32 = 0o700;
 /// notices and far above the cost of the check.
 const POLL: Duration = Duration::from_millis(100);
 
+/// How long a start will spend reclaiming an address somebody else is holding.
+///
+/// Bounded because an unbounded retry against a process that wants the address
+/// more than this one does is a loop, not a recovery. Long enough for the common
+/// case — a socket file left by a shell that has already exited — and short
+/// enough that a live companion produces a refusal rather than a hang.
+const TAKEOVER_SPIN: Duration = Duration::from_secs(2);
+
 /// The running channel.
 pub struct Channel {
     stop: Arc<AtomicBool>,
@@ -135,9 +143,19 @@ where
 
     // Non-blocking accept, so closing is immediate rather than a matter of when
     // the next relay happens to fire. See `POLL`.
+    //
+    // `try_overwrite` is the "a stale channel is replaced, not refused" half of
+    // `src/relay/channel.ts`: a crash leaves a socket behind, and a companion
+    // that refuses to start because of one is a companion the user has to clear
+    // by hand. It is safe here for the reason that module gives for removing an
+    // entry at all — `prepare_address` has already established that the holding
+    // directory is `0700` and ours, so nothing in it belongs to anybody else.
+    // The spin bound keeps a contended address from becoming an unbounded wait.
     let listener = ListenerOptions::new()
         .name(name)
         .nonblocking(ListenerNonblockingMode::Accept)
+        .try_overwrite(true)
+        .max_spin_time(TAKEOVER_SPIN)
         .create_sync()?;
 
     restrict_to_owner(&address);

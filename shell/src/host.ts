@@ -134,18 +134,15 @@ interface TauriInternals {
 /** The Tauri API, or `null` when this document is not inside a shell window. */
 export function tauri(): TauriInternals | null {
   const internals = (globalThis as Record<string, unknown>)["__TAURI_INTERNALS__"];
-  const api = (internals as { invoke?: unknown } | undefined)?.invoke;
+  const invoke = (internals as TauriInternals | undefined)?.core?.invoke;
 
-  if (typeof api !== "function") return null;
+  if (typeof invoke !== "function") return null;
 
   // The one place in this file that reaches into the runtime's globals, and it
   // does so by asking whether they are there rather than by trusting that they
   // are: the same document, built by the same source, runs with and without a
   // window behind it.
-  return {
-    core: { invoke: (internals as TauriInternals).core.invoke },
-    event: { listen: (internals as TauriInternals).event.listen },
-  };
+  return internals as TauriInternals;
 }
 
 /** The host for a document inside a real shell window. */
