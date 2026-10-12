@@ -260,7 +260,7 @@ fn main() {
             if let Err(error) = window.set_focusable(false) {
                 report(&format!(
                     "the window would not give up the keyboard: {error}; \
-                     an ambient surface may interrupt"
+                     it may interrupt while there is nothing to say"
                 ));
             }
 
