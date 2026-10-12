@@ -17,6 +17,48 @@ the capability is measured rather than assumed. These are the measurements.
 | takes focus when it appears | **yes, within ~2s** | **no** | not measured |
 | requested window size honoured | **no** (140x150 → 200x239) | not measured | not measured |
 | `set_position` honoured | **no** (returns OK, stays at 0,0) | not measured | not measured |
+| what the capability probe asks | layer surface bound? | topmost style bit on the real handle? | window level floating? |
+| what it answered, as read by the shell | **`false`** — Tauri opens toplevels | **not measured**; the code will ask, and the observation above says yes | **not measured**; the code will ask |
+
+Two rows are about *this repository's probe* rather than about the platform, and
+they are kept separate from the behavioural rows on purpose. "Windows floats" is
+an observation somebody made by hand. "The shell reports a persistent surface on
+Windows" is what the code will now do — and it has not been run there.
+
+## Why the probe asks each platform a different question
+
+The probe used to ask one question everywhere: *did the compositor grant
+`zwlr_layer_shell_v1` to this window's surface?*
+
+That is the right question for a Wayland compositor, and a meaningless one
+anywhere else. Windows and macOS have no compositor and no protocols, and will
+never grant a Wayland protocol to anything. Tauri creates toplevels and cannot
+create a layer surface on any platform, so the read came back empty on all
+three — and an empty list was read as "no platform can float a persistent
+surface" when what had actually been measured was "no host asked a question these
+platforms understand".
+
+The empty answer was true. The inference was the bug, and it cost the persistent
+companion on the one platform in this table where it demonstrably works.
+
+So each platform is now asked something it can answer about itself, and the
+report names which question was asked next to what it answered. See
+`shell/src-tauri/src/capability.rs`.
+
+## What reading a style bit does and does not prove
+
+The Windows read is `GetWindowLongW(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST` on this
+window's real handle. That is a fact the kernel holds about a real window, and
+it is materially different from reading back a flag the host set — which is all
+that happens on the other platforms and is documented above.
+
+**It does not prove the window then stayed above other windows.** No API reports
+that. The kernel can grant the style and the window manager can still put
+something else on top. So the Windows row above rests on the hand observation —
+the surface stayed above every window tested, including a maximised one — and the
+probe neither strengthens nor weakens it. Re-running the shell on Windows is the
+check that would confirm the code follows the observation; until then it is
+recorded as what the code will do rather than as what the code did.
 
 ## Linux — GNOME 44, Wayland, `zwlr_layer_shell_v1` not granted
 
@@ -39,7 +81,8 @@ Two further surprises, both recorded because they cost time:
 - **`set_position` returns success and does nothing.** The window stays at 0,0. A drag
   handler and a persisted position cannot rely on it here.
 
-Probe: `node scripts/probe-capability.mjs` → `can hold a persistent surface: false`.
+Probe: `node scripts/probe-capability.mjs` → `can hold a persistent surface: false`,
+asked `wayland-layer`.
 
 ## Windows 11
 
@@ -49,27 +92,28 @@ Verified by observation, not only by the probe: the surface stayed above every w
 tested, including a maximised one, and did not take focus when the user typed elsewhere.
 That is the whole of the persistent branch, and it is confirmed on real hardware.
 
-The probe was not captured on this platform in the same run, so
-`canHoldPersistentSurface()` returning `true` here is *inferred* from the behaviour rather
-than read from the granted protocol list. `app-shell` was asked to confirm both agree.
+`app-shell` shipped reporting this shell as escalate-only *here as well*, and the
+disagreement was the finding. The probe read the granted protocol list back before it
+opened its window and published exactly what it was given, and on every platform Tauri
+can open a window on that list is empty. So the shell reported a capability it could
+demonstrate nowhere as missing on a platform where it works.
 
-**They do not agree, and the disagreement is the finding.** The shell reads the granted
-protocol list back before it opens its window and publishes exactly what it was given —
-see `shell/src-tauri/src/capability.rs`. On every platform Tauri can open a window on,
-that list is empty: `zwlr_layer_shell_v1` places a client in a layer by *replacing* the
-role a window would otherwise have, and Tauri's backend creates toplevels. So the shell
-runs escalate-only here too, including on Windows 11, where the observation above says a
-persistent surface would work.
-
-That is the safe direction and it is correct everywhere, but it costs the persistent
-companion the platform can actually provide. It is recorded in `shell/README.md` rather
-than worked around, and it is the honest consequence of defining the capability as a
-protocol list rather than as a boolean this project would have to guess at per platform.
+**That is now fixed, and the fix is not a new observation.** The probe asks Windows
+whether `WS_EX_TOPMOST` is set on the real window handle, which is a question Windows
+can answer, and the answer follows the observation above: a persistent surface. **This
+shell has not been run on Windows**, so the row is recorded as what the code will do.
+The check that confirms it is the same one that produced the observation in the first
+place — run the shell and watch the window against a maximised one.
 
 ## macOS
 
 **Not measured.** It cannot be measured from Linux, and no Mac was available. Everything in
 this column above is unknown.
+
+The code will now ask this platform whether the window's level is a floating level,
+which on macOS is a genuine query rather than a read-back of the host's own flag, and
+the answer will be whatever a Mac says. **That is a prediction, not a result**, and it is
+recorded as such: the platform becomes persistent in the code and is unmeasured in fact.
 
 What is *not* unknown: v0.1 on macOS is a plain floating panel, which is well-trodden
 (`NSPanel` at `.floating`). The genuinely hard macOS work — the notch — is deferred to
@@ -89,5 +133,5 @@ always-on-top panel, prints a report, and exits. Two halves:
   things that had not happened — the probe was broken, not the platform.
 - **Only a person answers whether it actually stayed on top.** No test can observe stacking.
 
-`node scripts/probe-capability.mjs` reports whether the compositor granted
-`zwlr_layer_shell_v1`, alongside the environment it ran in, because the two have to agree.
+`node scripts/probe-capability.mjs` reports which mechanism each platform was asked
+about, what it answered, and the environment it ran in, because the three have to agree.

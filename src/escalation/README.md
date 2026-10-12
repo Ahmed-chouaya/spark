@@ -22,23 +22,46 @@ because it ships a product that does nothing on a large and reasonable desktop.
 
 ## The capability probe, and what it is not
 
-`canHoldPersistentSurface` asks one question: did the compositor grant this
-window `zwlr_layer_shell_v1`?
+`canHoldPersistentSurface` reads one report from the host: **which question was
+asked**, and **what it answered**.
 
-Compositors own stacking for Wayland clients, so "keep this window on top" is
-not a request a client can make of them. It is accepted and discarded. The layer
-protocol is the only thing that places a client in a stack of its own, and
-compositors differ on whether they implement it — for reasons that have nothing
-to do with one another.
+Each platform is asked something it can answer about itself:
 
-So the capability is read from **what the compositor actually granted**, never
-from an OS name, a desktop environment, or a build flag. Each of those is a
-proxy for the property, and every proxy is wrong somewhere.
+| | Question | Why this one |
+|---|---|---|
+| Wayland | did the compositor bind a layer surface to this window? | the compositor owns stacking for its clients, and the layer protocol is the only way into a stack of its own |
+| Windows | is the topmost style bit set on this window's real handle? | the kernel's record of a real window, not a flag this host set |
+| macOS | is this window's level a floating level? | the window server's record of a real window |
 
-The failure direction is chosen: an unreadable host reports no layer, which
-selects the escalate-only behaviour that works everywhere. The opposite mistake
-would report a layer never granted, producing a surface that believes it is
-floating while it is not.
+It used to ask all three the same question — did the compositor grant
+`zwlr_layer_shell_v1` — which is the right question for a Wayland compositor and
+a meaningless one for the other two. They have no compositor and no protocols, and
+will never grant a Wayland protocol to anything. The empty answer that produced
+was true, and reading it as "no platform can float" was the bug: it cost the
+persistent companion on Windows 11, where it demonstrably works.
+
+The report names the mechanism as well as the answer so it can be audited. A
+reader seeing `windows-topmost` knows which question produced the boolean. A list
+of protocol names on a platform that has no protocols would be a lie about the
+kind of thing in it, and the next reader would reasonably ask what protocol that
+is.
+
+So the capability is read from **what the platform itself states**, never from an
+OS name, a desktop environment, or a build flag. Each of those is a proxy for the
+property, and every proxy is wrong somewhere.
+
+**The runtime offers `is_always_on_top()` and this does not use it.** On Linux it
+returns an `AtomicBool` the host set; on Windows a flag the host set; on macOS a
+genuine query. A read-back of our own request is the host's own request with a
+different name, and it is *named* like a verification, which is why it survives
+review. macOS is the one platform where it would be correct and it is still not
+used: a guard with a per-platform exception is a guard with a hole in it.
+
+The failure direction is chosen: an unreadable host, a host that answered no, and
+a host that could not ask all report escalate-only, which is the behaviour that
+works everywhere. "The platform said no" and "no platform could be asked" both
+escalate but stay distinguishable, because the first is a fact about the platform
+and the second is a fact about the host.
 
 Run it on this machine:
 
@@ -54,20 +77,20 @@ else — **do not** carry a machine's answer forward to another.
 
 | Machine | Compositor | Probe | Idle behaviour | Notes |
 |---|---|---|---|---|
-| Fedora GNOME, Wayland | GNOME Mutter | `zwlr_layer_shell_v1` not granted → `false` | absent unless blocked | Does not implement the layer protocol at all; not planned to. Escalating surface stays above other windows only while it holds focus. |
+| Fedora GNOME, Wayland | GNOME Mutter | asked `wayland-layer` → `false` | absent unless blocked | Does not implement the layer protocol at all; not planned to. Escalating surface stays above other windows only while it holds focus. |
 
 ### Not yet observed
 
-The **persistent-surface path on a compositor that grants the layer protocol**
-has not been run. Everything about it — that the surface really does stay above
-unfocused windows, that the compositor places it where the shell asked, that it
-survives a workspace switch — rests on the protocol's documented behaviour and on
-prior art, not on measurement.
+The **persistent-surface path on a platform that reports holding the surface**
+has not been run by this shell. Everything about it — that the surface really
+does stay above unfocused windows, that the platform keeps it there, that it
+survives a workspace switch — rests on a report the code now asks for and on the
+hand observation recorded in `docs/platform-findings.md`, not on a run.
 
-Run `npm run probe:capability` on a machine whose compositor grants
-`zwlr_layer_shell_v1` and record what it finds here before claiming that branch
-works. The capability check and the visibility rules are covered by tests; what
-is not covered is the compositor honouring a request it has agreed to.
+Run `npm run probe:capability` on such a machine and record what it finds here
+before claiming that branch works. The capability check and the visibility rules
+are covered by tests; what is not covered is the platform honouring a surface it
+has agreed to hold.
 
 ## No persistent permission
 
