@@ -51,9 +51,21 @@ const PAYLOADS = {
     session_id: "harness",
     timestamp: 1_200,
   },
-  /** The answer goes back and the agent resumes, which is what clears the block. */
-  answered: {
-    hook_event_name: "UserPromptSubmit",
+  /**
+   * The agent is asking the user something. Blocked, and with no answer this
+   * companion can give — so it must not escalate, which is the requirement the
+   * page exists partly to show.
+   */
+  question: {
+    hook_event_name: "Notification",
+    notification_type: "elicitation_dialog",
+    session_id: "harness",
+    timestamp: 1_200,
+  },
+  /** The agent got on with it, which is what a block clearing looks like from outside. */
+  resumed: {
+    hook_event_name: "PreToolUse",
+    tool_use_id: "t1",
     session_id: "harness",
     timestamp: 1_300,
   },
@@ -61,12 +73,22 @@ const PAYLOADS = {
 
 const encode = (payload: object): Uint8Array => new TextEncoder().encode(JSON.stringify(payload));
 
+/**
+ * The window this page has instead of a real one.
+ *
+ * Built once, at module scope, and deliberately not inside the component: an
+ * absent host records what it was asked, so a host built per render would be a
+ * record of the last render alone. The runtime re-renders on every payload and
+ * every visibility change, and a fresh host each time would leave the readout
+ * showing nothing the shell had ever asked.
+ */
+const host = absentHost();
+
 const mount = document.getElementById("root");
 if (!mount) throw new Error("the shell harness is missing its #root mount point");
 
 export function ShellHarness() {
-  const host = absentHost();
-  const shell = useCompanionShell({ host, decode: (payload) => new TextDecoder().decode(payload) });
+  const shell = useCompanionShell({ host });
 
   const send = (payload: object) => shell.receive(encode(payload));
 
@@ -86,7 +108,10 @@ export function ShellHarness() {
         <button type="button" data-testid="block" onClick={() => send(PAYLOADS.blocked)}>
           Block on a permission
         </button>
-        <button type="button" data-testid="answer" onClick={() => send(PAYLOADS.answered)}>
+        <button type="button" data-testid="question" onClick={() => send(PAYLOADS.question)}>
+          Block on a question
+        </button>
+        <button type="button" data-testid="answer" onClick={() => send(PAYLOADS.resumed)}>
           Answer and continue
         </button>
       </div>
