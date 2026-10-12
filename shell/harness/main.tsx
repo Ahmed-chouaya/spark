@@ -5,7 +5,9 @@
  *
  * It mounts `useCompanionShell` — the same hook `shell/src/main.tsx` mounts —
  * and supplies two things the real window would: a host that records what it was
- * asked, and a payload source a person can push bytes into.
+ * asked, and a capability report. The report can be forced with `?report=`,
+ * which is how a run reaches the branch this machine's own window would not
+ * produce.
  *
  * It is not a second implementation of anything. The sessions come from the same
  * adapter and the same fold the relay feeds, the visibility comes from the same
@@ -28,6 +30,11 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { useCompanionShell } from "../src/companion";
 import { absentHost, type HostCalls } from "../src/host";
+import {
+  HOST_WINDOW_KEY,
+  readHostWindow,
+  type SurfacePlacement,
+} from "../../src/escalation/capability";
 import "./harness.css";
 
 /** The hook payloads the relay would carry, as the host agent writes them. */
@@ -87,12 +94,46 @@ const host = absentHost();
 const mount = document.getElementById("root");
 if (!mount) throw new Error("the shell harness is missing its #root mount point");
 
+/**
+ * A capability report, published where the native host publishes one.
+ *
+ * ## Why the harness can say it
+ *
+ * A machine can demonstrate only one branch of a two-branch rule at a time, so
+ * the other has to be reachable or it is never looked at. That was already true
+ * for `src/dev`'s surface harness and it is now equally true here.
+ *
+ * `?report=windows-topmost:true` writes the *same shape the native host
+ * publishes* into the *same global the surface reads*, before React mounts. So
+ * the end-to-end run below drives the real publish → read → decide path in a
+ * real browser, and the only thing it does not drive is the measurement — which
+ * needs a real window, and is recorded per machine in `shell/README.md`.
+ *
+ * The mechanism names are the product's vocabulary rather than literals: a report
+ * naming something this build has never heard of is refused by `readHostWindow`,
+ * which is a property worth being able to show rather than assume.
+ */
+function publishForcedReport(): void {
+  const forced = new URLSearchParams(window.location.search).get("report");
+  if (!forced) return;
+
+  const [placement, held] = forced.split(":") as [SurfacePlacement, string];
+
+  (globalThis as Record<string, unknown>)[HOST_WINDOW_KEY] = {
+    placement,
+    held: held === "true",
+  };
+}
+
+publishForcedReport();
+
 export function ShellHarness() {
   const shell = useCompanionShell({ host });
 
   const send = (payload: object) => shell.receive(encode(payload));
 
   const windowState: HostCalls = host.calls;
+  const reported = readHostWindow();
 
   return (
     <main>
@@ -130,6 +171,14 @@ export function ShellHarness() {
         focused: <output data-testid="window-focus-count">{windowState.focused}</output> · placed at:{" "}
         <output data-testid="placed-at">
           {shell.placedAt ? `${shell.placedAt.x},${shell.placedAt.y}` : "unknown"}
+        </output>{" "}
+        {/* The report, as the surface read it. On this page there is no window,
+            so the answer comes from `?report=` — published into the same global
+            the native host writes, so a run exercises the real read path rather
+            than a harness-only branch of it. */}
+        · report:{" "}
+        <output data-testid="report">
+          {reported ? `${reported.placement} / ${reported.held}` : "none"}
         </output>
       </p>
 

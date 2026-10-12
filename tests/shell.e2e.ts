@@ -15,6 +15,14 @@ import { expect } from "e2e";
  * `shell/README.md` rather than asserted from a browser that knows nothing
  * about it.
  *
+ * That includes the capability *measurement*: whether Windows kept the window on
+ * top is a question about a real window. What this run does drive is the other
+ * half of the change — that a report saying the platform held the surface
+ * produces the persistent behaviour, and that every non-affirmative report,
+ * including "no platform could be asked", produces escalate-only. That path runs
+ * through the real global the native host writes, so it is the real read and the
+ * real decision rather than a harness-only branch of either.
+ *
  * So `/shell/harness.html` mounts the shell's own runtime — the same hook
  * `shell/src/main.tsx` mounts, against a host that records rather than acts — and
  * the run pushes real hook payloads through the real adapter and the real fold.
@@ -32,6 +40,22 @@ import { expect } from "e2e";
 
 const PAGE = "/shell/harness.html";
 
+/**
+ * A capability report the harness published, in the URL.
+ *
+ * `mechanism:held` — and it goes into the *same global the native host writes*,
+ * before React mounts, so what a run below exercises is the real publish →
+ * read → decide path and not a harness-only branch of it.
+ *
+ * The one thing these runs cannot reach is the *measurement*: whether Windows
+ * actually kept the window on top is a question about a real window, and no
+ * browser engine has one. That is recorded per machine in `shell/README.md`, and
+ * the claim here is narrower on purpose — that a report saying the platform held
+ * the surface produces the persistent behaviour, which is what the code can be
+ * held to.
+ */
+const reported = (mechanism: string, held: boolean) => `${PAGE}?report=${mechanism}:${held}`;
+
 test("app opens", async ({ app, screen }) => {
   await app.open(PAGE);
   await expect(screen.getByRole("heading", "Spark shell")).toBeVisible();
@@ -43,9 +67,94 @@ test("nothing is on screen before anything has been blocked", async ({ app, scre
   // The branch this machine gets, and the one the whole capability rule is
   // written around: a platform that cannot hold a persistent surface has nothing
   // on it until there is something to say.
+  await expect(screen.getByTestId("report")).toHaveText("none");
   await expect(screen.getByTestId("escalation-surface")).toBeHidden();
   await expect(screen.getByTestId("window-visible")).toHaveText("false");
   await expect(screen.getByTestId("window-focus-count")).toHaveText("0");
+});
+
+test("a report saying the platform held the surface makes it persistent", async ({ app, screen }) => {
+  // The headline behaviour this change restores: a platform that says it can
+  // hold a persistent surface gets a companion that is present while idle. The
+  // old probe reported the opposite here, and was wrong.
+  await app.open(reported("windows-topmost", true));
+
+  await expect(screen.getByTestId("report")).toHaveText("windows-topmost / true");
+  await expect(screen.getByTestId("escalation-surface")).toBeVisible();
+  await expect(screen.getByTestId("escalating")).toHaveText("false");
+  await expect(screen.getByTestId("window-visible")).toHaveText("true");
+
+  // And an ambient surface does not take the keyboard, which is the other half
+  // of what "persistent" means here.
+  await expect(screen.getByTestId("window-focus-count")).toHaveText("0");
+});
+
+test("a report saying the platform did not make it escalate-only", async ({ app, screen }) => {
+  await app.open(reported("windows-topmost", false));
+
+  // Same mechanism, opposite answer, opposite behaviour. That is the whole claim
+  // of a runtime-detected capability: the answer decides, not the platform.
+  await expect(screen.getByTestId("report")).toHaveText("windows-topmost / false");
+  await expect(screen.getByTestId("escalation-surface")).toBeHidden();
+  await expect(screen.getByTestId("window-visible")).toHaveText("false");
+});
+
+test("every mechanism with the same answer produces the same behaviour", async ({ app, screen }) => {
+  // The report names the *question*, not the platform, so the same answer has to
+  // behave the same however it was arrived at. A build that switched behaviour
+  // on an OS name would fail here.
+  for (const mechanism of ["wayland-layer", "windows-topmost", "macos-level"]) {
+    await app.open(reported(mechanism, true));
+    await expect(screen.getByTestId("escalation-surface"), mechanism).toBeVisible();
+
+    await app.open(reported(mechanism, false));
+    await expect(screen.getByTestId("escalation-surface"), mechanism).toBeHidden();
+  }
+});
+
+test("a report naming no platform is escalate-only, and is not an error", async ({ app, screen }) => {
+  // There is no window behind this page, so there is nothing to ask. That is an
+  // answer with a consequence, not a missing value — and it must not become
+  // persistent because it happens to claim to hold the surface.
+  await app.open(reported("unknown", false));
+  await expect(screen.getByTestId("report")).toHaveText("unknown / false");
+  await expect(screen.getByTestId("escalation-surface")).toBeHidden();
+
+  await app.open(reported("unknown", true));
+  await expect(screen.getByTestId("report")).toHaveText("unknown / true");
+  await expect(screen.getByTestId("escalation-surface")).toBeHidden();
+});
+
+test("a report naming a mechanism this build has never heard of is refused", async ({ app, screen }) => {
+  // A newer shell publishing a mechanism this document cannot audit is a value
+  // it will not act on. Refused means escalate-only, not a thrown page.
+  await app.open(reported("beos-layer", true));
+
+  await expect(screen.getByTestId("report")).toHaveText("none");
+  await expect(screen.getByTestId("escalation-surface")).toBeHidden();
+});
+
+test("a block still escalates on the persistent branch, without interrupting", async ({ app, screen }) => {
+  // The capability decides the idle behaviour and nothing else. A platform that
+  // can float does not stop surfacing blocks — it stops needing to interrupt to
+  // do it, which is the whole difference between the two branches.
+  await app.open(reported("windows-topmost", true));
+  await screen.getByTestId("block").click();
+
+  await expect(screen.getByTestId("escalation-surface")).toBeVisible();
+  await expect(screen.getByTestId("escalating")).toHaveText("true");
+  await expect(screen.getByTestId("window-focus-count")).toHaveText("0");
+});
+
+test("a block on the escalate-only branch interrupts, because appearing is the escalation", async ({
+  app,
+  screen,
+}) => {
+  await app.open(reported("wayland-layer", false));
+  await screen.getByTestId("block").click();
+
+  await expect(screen.getByTestId("escalation-surface")).toBeVisible();
+  await expect(screen.getByTestId("window-focus-count")).toHaveText("1");
 });
 
 test("a session started by the host is folded with nothing supplying it", async ({ app, screen }) => {

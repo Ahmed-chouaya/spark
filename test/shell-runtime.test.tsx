@@ -1,8 +1,16 @@
 import { render } from "@testing-library/react";
 import { act } from "react";
-import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { createContext, runInContext } from "node:vm";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import { useCompanionShell } from "../shell/src/companion";
 import { absentHost, type AbsentHost, type WorkArea } from "../shell/src/host";
+import {
+  HOST_WINDOW_KEY,
+  SURFACE_PLACEMENTS,
+  type SurfacePlacement,
+} from "../src/escalation/capability";
 import { createClaudeCodeSource } from "../src/relay/session-source";
 import { selectState } from "../src/state-selection";
 import type { AgentSession } from "../src/state-selection/session";
@@ -81,6 +89,40 @@ const folded = (sequence: readonly object[]): readonly AgentSession[] => {
 
 const WORK_AREA: WorkArea = { x: 0, y: 0, width: 1920, height: 1080 };
 
+/**
+ * The report the real publishing template produces, in a real scope.
+ *
+ * The template is run rather than read, and it is the same file the Rust
+ * `include_str!`'s, because the claim being made is end-to-end: that what the
+ * host publishes reaches the surface and decides what it does. A hand-built
+ * `{ placement, held }` here would let the template drift without any of these
+ * tests noticing, and the template is where the bug that produced a
+ * syntactically-valid-wrong-value report would live.
+ */
+const publishedReport = (placement: SurfacePlacement, held: boolean): Record<string, unknown> => {
+  const template = readFileSync(join(import.meta.dirname, "../shell/src-tauri/src/publish.js"), "utf8");
+  const scope: Record<string, unknown> = {};
+  createContext(scope);
+
+  runInContext(
+    template
+      .replace("__SPARK_PLACEMENT__", JSON.stringify(placement))
+      .replace("__SPARK_HELD__", String(held)),
+    scope
+  );
+
+  return scope;
+};
+
+/** Every mechanism a host may publish, minus the one that names no platform. */
+const NAMED_PLACEMENTS = SURFACE_PLACEMENTS.filter((p) => p !== "unknown");
+
+afterEach(() => {
+  // The global is process-wide and these tests publish into it, so leaving one
+  // behind would decide the branch for whatever ran next.
+  delete (globalThis as Record<string, unknown>)[HOST_WINDOW_KEY];
+});
+
 interface Mounted {
   readonly host: AbsentHost;
   /** Feed one payload through the runtime, as the channel would. */
@@ -90,19 +132,43 @@ interface Mounted {
   readonly state: ReturnType<typeof useCompanionShell>;
 }
 
-/** Mount the shell's runtime against a host that records rather than acts. */
-const mount = (options: { persistent?: boolean; host?: AbsentHost } = {}): Mounted => {
+/**
+ * Mount the shell's runtime, with the capability reached the way the window
+ * reaches it.
+ *
+ * `persistent` is passed explicitly where a test is about the visibility rules
+ * and only those — it keeps those tests reading as claims about escalation
+ * rather than about how the answer arrives. Everything about the report itself
+ * goes through `scope`, which is a real `__SPARK_HOST_WINDOW__` published by the
+ * real template: `test/shell-capability.test.ts` runs that template, and this
+ * runs what it produced.
+ */
+const mount = (options: {
+  persistent?: boolean;
+  host?: AbsentHost;
+  scope?: Record<string, unknown>;
+} = {}): Mounted => {
   const host = options.host ?? absentHost({ workArea: WORK_AREA });
-  const persistent = options.persistent ?? false;
 
   let latest!: ReturnType<typeof useCompanionShell>;
   let send!: (payload: Uint8Array) => void;
 
   const Probe = () => {
-    latest = useCompanionShell({ host, persistent });
+    // No `persistent` unless one was asked for: the default is the report the
+    // host published, which is what the real document does.
+    latest = useCompanionShell({ host, persistent: options.persistent });
     send = latest.receive;
     return <>{latest.surface}</>;
   };
+
+  // Published before the first render, as an initialisation script does. In a
+  // jsdom document the global is the only seam there is, and the point of these
+  // tests is that the *report* is what decides, not how it got here.
+  if (options.scope) {
+    for (const [key, value] of Object.entries(options.scope)) {
+      (globalThis as Record<string, unknown>)[key] = value;
+    }
+  }
 
   const { container } = render(<Probe />);
 
@@ -326,5 +392,125 @@ describe("the window is placed, and the placement is checked", () => {
     await act(async () => {});
 
     expect(shell.host.calls.placed).toHaveLength(1);
+  });
+});
+
+describe("the published report decides what the companion does", () => {
+  // These are the end-to-end claims, and they are separate from the visibility
+  // rules above on purpose. Everything above passes `persistent` explicitly, so
+  // it is all a claim about escalation. This is the claim about *how the
+  // platform's answer gets here* — through the report the host publishes, not
+  // through a flag anybody set.
+
+  it("is persistent when the report says the platform held the surface", () => {
+    // One build, two platforms, two behaviours — which is the whole point of
+    // detecting this at runtime rather than switching a feature off per OS.
+    for (const placement of NAMED_PLACEMENTS) {
+      const shell = mount({ scope: publishedReport(placement, true) });
+
+      expect(shell.state.surfaceVisible, placement).toBe(true);
+      expect(shell.host.calls.visible, placement).toEqual([true]);
+      expect(shell.rendered(), placement).toBe("idle");
+    }
+  });
+
+  it("is escalate-only when the report says the platform did not", () => {
+    for (const placement of NAMED_PLACEMENTS) {
+      const shell = mount({ scope: publishedReport(placement, false) });
+
+      expect(shell.state.surfaceVisible, placement).toBe(false);
+      expect(shell.host.calls.visible, placement).toEqual([]);
+      expect(shell.rendered(), placement).toBeNull();
+    }
+  });
+
+  it("is escalate-only when no platform could be asked, whatever it claims to hold", () => {
+    // The browser case and the no-window case, and they have to land in the
+    // behaviour that works everywhere rather than in a throw.
+    const shell = mount({ scope: publishedReport("unknown", false) });
+
+    expect(shell.state.surfaceVisible).toBe(false);
+    expect(shell.host.calls.visible).toEqual([]);
+  });
+
+  it("still escalates on the persistent branch, because a block is a block", () => {
+    // The capability decides the *idle* behaviour and nothing else. A platform
+    // that can float does not stop surfacing blocks; it stops needing to
+    // interrupt to do it.
+    const shell = mount({ scope: publishedReport("windows-topmost", true) });
+    shell.send(payloads.blocked);
+
+    expect(shell.rendered()).toBe("needsYou");
+    expect(shell.host.calls.focused).toBe(0);
+    expect(shell.host.calls.visible).toEqual([true]);
+  });
+
+  it("still escalates on the escalate-only branch, and does interrupt", () => {
+    const shell = mount({ scope: publishedReport("wayland-layer", false) });
+    shell.send(payloads.blocked);
+
+    expect(shell.rendered()).toBe("needsYou");
+    expect(shell.host.calls.focused).toBe(1);
+    expect(shell.host.calls.visible).toEqual([true]);
+  });
+
+  it("is escalate-only where the host published nothing at all", () => {
+    // A document with no host behind it — a browser tab — has no surface of its
+    // own, and that is a real answer rather than a failure. Both are the same
+    // branch here and neither is an error.
+    const shell = mount();
+
+    expect(shell.state.surfaceVisible).toBe(false);
+    expect(shell.rendered()).toBeNull();
+  });
+
+  it("does not read the report as a platform name, so one report cannot span platforms", () => {
+    // The mechanism and the answer are separate fields precisely so a report
+    // cannot be half-right. `held: true` beside `placement: "unknown"` is a host
+    // that could not ask claiming an answer, and it escalates — asserted here
+    // through the template rather than through a literal, because that is the
+    // shape a host would actually publish.
+    const shell = mount({ scope: publishedReport("unknown", true) });
+
+    expect(shell.state.surfaceVisible).toBe(false);
+    expect(shell.host.calls.visible).toEqual([]);
+  });
+});
+
+describe("what consumed the capability is unchanged by its shape", () => {
+  // Task 4.3 in test form. The visibility rule, the focus rule and the sizing
+  // rule consume a boolean and must not have learned anything about mechanisms.
+  // This is asserted by checking they still behave identically when the report
+  // gains a field it does not read — the most likely way a rule could start
+  // depending on the report's shape without any of its own tests noticing.
+
+  it("renders identically whether the report names a mechanism or not", () => {
+    const withMechanism = mount({ scope: publishedReport("macos-level", false) });
+    const withoutMechanism = mount({ persistent: false });
+
+    withMechanism.send(payloads.blocked);
+    withoutMechanism.send(payloads.blocked);
+
+    expect(withMechanism.rendered()).toBe(withoutMechanism.rendered());
+    expect(withMechanism.state.state).toBe(withoutMechanism.state.state);
+    expect(withMechanism.state.escalating).toBe(withoutMechanism.state.escalating);
+    expect(withMechanism.host.calls).toEqual(withoutMechanism.host.calls);
+  });
+
+  it("sizes from its content, with no window size asked for", () => {
+    // The sizing rule predates the report and must not have started consulting
+    // it: whatever the platform said, the surface is sized by what it contains.
+    //
+    // Read after the block, so the stage exists — on the escalate-only branch it
+    // is not in the document at all while idle, and reading it before would be
+    // asserting about `null`.
+    for (const placement of SURFACE_PLACEMENTS) {
+      const shell = mount({ scope: publishedReport(placement, false) });
+
+      shell.send(payloads.blocked);
+
+      const stage = document.querySelector('[data-testid="escalation-stage"]');
+      expect(stage?.getAttribute("style") ?? "", placement).not.toMatch(/width|height/);
+    }
   });
 });
