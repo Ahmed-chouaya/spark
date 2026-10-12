@@ -151,6 +151,17 @@ impl Report {
     /// to be spelled as a deliberate act at each call site: every path that
     /// cannot ask goes through here, and a reader counting the ways this shell
     /// can fail to find out can count the call sites.
+    ///
+    /// Unused on Linux, and that is the honest shape of it: the Wayland
+    /// question needs no window and so always has an answer, while the Windows
+    /// and macOS questions are about a window and can fail to get one. Marked
+    /// rather than removed because deleting it on the platform where it is
+    /// unreachable would make the next reader think the `unknown` report is
+    /// Linux-only, which is the opposite of true.
+    #[cfg_attr(
+        not(any(windows, target_os = "macos")),
+        allow(dead_code, reason = "only reachable where the question needs a window")
+    )]
     pub fn unaskable() -> Self {
         Report {
             placement: UNKNOWN,
@@ -274,14 +285,22 @@ fn windows_topmost<R: tauri::Runtime>(window: &tauri::Window<R>) -> Report {
     // and `GWL_EXSTYLE` takes no pointer and writes nothing.
     let ex_style = unsafe { GetWindowLongW(handle, GWL_EXSTYLE) } as u32;
 
-    // Zero is both a legitimate extended style and this call's error return, so
-    // the two are not separated here — deliberately. Distinguishing them would
-    // mean calling `GetLastError` and treating a failure as "could not ask",
-    // which converts a platform that answered into a platform we could not
-    // reach. Reading the bit is the question; a window the kernel could not tell
-    // us about did not hold a topmost style, which is the answer this module is
-    // required to get right, and getting it wrong here is getting it wrong in the
-    // safe direction.
+    // A zero extended style is both a window with no extended styles and this
+    // call's error return, and the two are deliberately not separated.
+    //
+    // Separating them means calling `SetLastError(0)` before and `GetLastError`
+    // after, and then treating a failure as "could not ask". That would convert a
+    // platform that answered into one we could not reach — and it would get it
+    // wrong in the *unsafe* direction, because a failure is indistinguishable from
+    // "the kernel holds no extended styles", which means no topmost bit.
+    //
+    // So an unanswered question and a negative answer are both `false` here. They
+    // have the same consequence — escalate-only, correct everywhere — and the
+    // failure direction of this module is the one thing that must not be traded
+    // for a tidier distinction between two cases that both lead there. The
+    // `unaskable` report stays reserved for the one case that is genuinely
+    // different: no window handle at all, which means no question was asked
+    // rather than a question that was not answered.
     Report {
         placement: WINDOWS_TOPMOST,
         held: ex_style & WS_EX_TOPMOST != 0,
@@ -313,7 +332,7 @@ fn macos_level<R: tauri::Runtime>(window: &tauri::Window<R>) -> Report {
     // # Safety: `ns_window()` returns the `NSWindow` backing this window, owned by
     // the runtime and alive for the life of the window, so it outlives this
     // borrow. `level()` is a getter with no preconditions beyond a live object.
-    let level = unsafe { &*(handle as *const NSWindow) }.level();
+    let level = unsafe { (*(handle as *const NSWindow)).level() };
 
     Report {
         placement: MACOS_LEVEL,

@@ -75,14 +75,17 @@
 
 import {
   SURFACE_PLACEMENTS,
-  UNKNOWN_HOST_WINDOW as UNKNOWN_HOST_WINDOW_PLACEHOLDER,
+  UNKNOWN_HOST_WINDOW,
   UNKNOWN_PLACEMENT,
   type SurfacePlacement,
-// The extension is written out because `scripts/probe-capability.mjs` runs this
-// module under bare `node`, whose ESM resolver will not add one. Every other
-// import in `src/` omits it, so this looks inconsistent and is not: it is the
-// price of a tool that has no bundler.
+  // The extension is written out because `scripts/probe-capability.mjs` runs this
+  // module under bare `node`, whose ESM resolver will not add one. Every other
+  // import in `src/` omits it, so this looks inconsistent and is not: it is the
+  // price of a tool that has no bundler.
 } from "./placements.ts";
+
+export { SURFACE_PLACEMENTS, UNKNOWN_HOST_WINDOW, UNKNOWN_PLACEMENT };
+export type { SurfacePlacement };
 
 /**
  * What the host reports about the window it opened.
@@ -99,8 +102,6 @@ export interface HostWindow {
   readonly held: boolean;
 }
 
-export type { SurfacePlacement };
-
 /**
  * Where a native host publishes its report for this document to read.
  *
@@ -114,19 +115,6 @@ export const HOST_WINDOW_KEY = "__SPARK_HOST_WINDOW__";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
-
-const PLACEMENTS: readonly SurfacePlacement[] = SURFACE_PLACEMENTS;
-
-export { SURFACE_PLACEMENTS };
-
-/**
- * The report of a host that could ask nothing.
- *
- * Published rather than invented here, because it is a real answer with a real
- * consequence and it is the one a plain browser document produces: there is no
- * window behind it to ask, and a document with no window cannot float.
- */
-export const UNKNOWN_HOST_WINDOW: HostWindow = UNKNOWN_HOST_WINDOW_PLACEHOLDER;
 
 /**
  * Read the host's report out of a scope, or `null` if there is none.
@@ -146,7 +134,7 @@ export function readHostWindow(scope: unknown = globalThis): HostWindow | null {
   const placement = host["placement"];
   const held = host["held"];
 
-  if (typeof placement !== "string" || !PLACEMENTS.includes(placement as SurfacePlacement)) {
+  if (typeof placement !== "string" || !SURFACE_PLACEMENTS.includes(placement as SurfacePlacement)) {
     return null;
   }
   if (typeof held !== "boolean") return null;
