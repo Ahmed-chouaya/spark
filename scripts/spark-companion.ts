@@ -1,61 +1,126 @@
 /**
- * The companion process: listen on the channel, fold what arrives, say what
- * the reduction makes of it.
+ * The companion's entry point: work out where the relay will be, then start the
+ * window that listens there.
  *
- * This is the whole runtime the relay needs. It has no window and no platform
- * surface — that is `app-shell`, and until then it prints what it knows rather
- * than showing it, which is enough to see that a session started in a terminal
- * arrived on its own.
+ * It used to be the whole runtime — listen, fold, print what the reduction
+ * decided — because there was no window to show it on. Now the window is the
+ * product and this is what launches it: the address is derived, the shell's
+ * frontend is built, and `shell/src-tauri` is run with the address in its
+ * environment. The reduction it used to print is drawn by
+ * `shell/src/companion.tsx` instead, by the same adapter and the same fold, on a
+ * surface the user can look at.
  *
- * It runs through `vite-node` rather than being bundled, because it imports the
- * same `src/state-selection` the tests do, and that is the point: what it prints
- * is the real reduction rather than a stand-in for it.
+ * ## Why it hands the address over rather than letting the shell derive it
+ *
+ * `src/relay/address.ts` is the one implementation of the companion's address
+ * that a test can compare against the relay's Rust one
+ * (`test/relay-address.test.ts`). Deriving it here and passing it on keeps that
+ * a two-implementation contract. A third derivation inside `shell/src-tauri`
+ * would be a third answer that nothing compares, which is strictly worse than
+ * being told the one that is already checked — and the shell refusing to start
+ * without one is a louder failure than a shell that quietly bound somewhere the
+ * relay will never write.
+ *
+ * Nothing is negotiated. The value is derived from the running user's identity
+ * before either side starts; neither side can reach a different answer by asking.
+ *
+ * ## What it deliberately does not do
+ *
+ * It does not install hooks. `npm run relay:install` is a separate command that
+ * shows a diff and asks first, and starting the app is not consent to reconfigure
+ * the user's agent — a file this project does not own deciding whether their
+ * agent runs. `test/shell-shape.test.ts` pins that: a launcher that grew an
+ * `install` import would fail there rather than in review.
  *
  *   npm run companion
  */
 
-import { openChannel } from "../src/relay/channel";
-import { createClaudeCodeSource } from "../src/relay/session-source";
-import { selectState } from "../src/state-selection/reduce";
-import { escalates } from "../src/state-selection/escalation";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { currentCompanionAddress } from "../src/relay/address";
+
+/** The root of this repository, from this file rather than from the cwd. */
+const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+/** The shell's frontend entry, and the directory Tauri embeds it from. */
+const UI_ENTRY = join(REPO, "shell/index.html");
+
+/** The crate that opens the window. */
+const CRATE = join(REPO, "shell/src-tauri/Cargo.toml");
+
+/**
+ * The variable the shell reads its channel address from.
+ *
+ * Named here rather than written into the shell's source, so the two ends are
+ * checked against each other: `shell/src-tauri/src/channel.rs` asserts that this
+ * file still uses this name, which is the only thing that keeps a rename on one
+ * side from being a silent "the shell listens nowhere".
+ */
+const ADDRESS_VARIABLE = "SPARK_CHANNEL_ADDRESS";
 
 const out = (line: string): void => {
   process.stdout.write(`${line}\n`);
 };
 
-const source = createClaudeCodeSource();
+const note = (line: string): void => {
+  process.stderr.write(`companion: ${line}\n`);
+};
 
-/** The last state announced, so silence is not mistaken for a stalled companion. */
-let announced: string | undefined;
+/**
+ * Run a command, inheriting this process's streams.
+ *
+ * Inheriting rather than capturing is the point: the shell reports the platform's
+ * answers on standard error, and a windowed program whose diagnostics went
+ * through a pipe the user cannot see would be a program that cannot say when it
+ * did not work.
+ */
+function run(command: string, args: string[], extraEnvironment: NodeJS.ProcessEnv = {}) {
+  return spawn(command, args, {
+    cwd: REPO,
+    stdio: "inherit",
+    env: { ...process.env, ...extraEnvironment },
+  });
+}
 
-const channel = await openChannel({
-  onPayload: (payload) => {
-    source.receive(payload);
+/** Run a command to completion, refusing to go on if it failed. */
+async function build(command: string, args: string[]): Promise<void> {
+  const code = await new Promise<number | null>((resolve, reject) => {
+    run(command, args).once("error", reject).once("exit", resolve);
+  });
 
-    // One line per state change, not per payload. The host fires a hook on
-    // every tool call, and a line per tool call would bury the one the user is
-    // watching for.
-    const state = selectState(source.sessions);
-    if (state === announced) return;
-    announced = state;
+  if (code !== 0) {
+    throw new Error(`${command} ${args.join(" ")} exited ${code ?? "by signal"}`);
+  }
+}
 
-    const blocked = source.sessions.filter(escalates);
-    out(
-      `companion: ${state}` +
-        (blocked.length > 0
-          ? ` (blocked: ${blocked.map((session) => session.sessionId).join(", ")})`
-          : "")
-    );
-  },
+const address = currentCompanionAddress();
+
+if (!address) {
+  // Answered rather than guessed. An address built from an assumed identity
+  // would reach a different user's companion or nobody's, and neither is
+  // something the user could tell apart from the companion not running.
+  note("cannot derive the companion's address: the running user has no readable identity");
+  process.exit(1);
+}
+
+await build("npx", ["vite", "build", "--config", "shell/vite.config.ts"]);
+
+note(`listening on ${address}`);
+note("ready");
+
+const shell = run("cargo", ["run", "--manifest-path", CRATE], {
+  [ADDRESS_VARIABLE]: address,
 });
 
-out(`companion: listening on ${channel.address}`);
-out("companion: ready");
-
 const stop = (): void => {
-  void channel.close().catch(() => {});
-  process.exit(0);
+  shell.kill();
 };
 
 process.on("SIGINT", stop);
 process.on("SIGTERM", stop);
+
+shell.on("exit", (code, signal) => {
+  out(`companion: stopped (${signal ?? `exit ${code ?? 0}`})`);
+  process.exit(code ?? 0);
+});

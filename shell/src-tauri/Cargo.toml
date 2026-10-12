@@ -1,0 +1,34 @@
+[package]
+name = "spark-shell"
+version = "0.1.0"
+edition = "2021"
+description = "The Spark companion: one mascot, on a window the platform agreed to."
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# The window and the IPC bridge. Nothing else is here that could interpret
+# anything: see `src/main.rs` for what this program is allowed to know.
+tauri = { version = "2", features = [] }
+
+# One cross-platform local-socket API. Unix domain sockets on Unix, named pipes
+# on Windows, one call site — so the platform branch that cannot be run from
+# this machine is the crate's and not ours. `src/relay/channel.ts` reaches the
+# same two things through `node:net` for the same reason.
+interprocess = { version = "2", features = [] }
+
+# Only for one call: reading this process's uid, so the shell can refuse a
+# channel directory belonging to somebody else. `relay/Cargo.toml` already takes
+# the same crate for the same reason and with no other use.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[profile.dev]
+# The mascot is small and the window is one surface. A debug webview costs more
+# than it saves here, so the shell is built the way it will actually be run.
+opt-level = 1
+
+[profile.release]
+strip = true

@@ -15,6 +15,8 @@
     "relay:install": "node scripts/relay-install.ts",
     "relay:uninstall": "node scripts/relay-install.ts uninstall",
     "companion": "vite-node scripts/spark-companion.ts",
+    "shell:build": "vite build --config shell/vite.config.ts",
+    "shell:run": "cargo run --manifest-path shell/src-tauri/Cargo.toml",
     "relay:verify": "vite-node scripts/relay-integration.ts",
     "verify": "npm run extract:anchors && npm run typecheck && npm run test",
     "test:e2e": "e2e run"
@@ -25,6 +27,7 @@
     "@ai-sdk/openai": "^4.0.0",
     "@ai-sdk/openai-compatible": "^3.0.0",
     "@e2e-dev/web": "^0.14.0",
+    "@tauri-apps/api": "^2.12.3",
     "@testing-library/react": "^16.3.0",
     "@types/node": "^26.6.5",
     "@types/react": "^19.1.0",

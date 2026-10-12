@@ -1,0 +1,103 @@
+/**
+ * The shell's own styling: what the window must not have, and nothing else.
+ *
+ * The window is transparent, undecorated, always-on-top and absent from the
+ * taskbar — that is `tauri.conf.json`, and none of it is this file's job. What is
+ * this file's job is the half the window cannot do on its own: making the
+ * document itself transparent, so there is no background behind the mascot for
+ * the compositor to show.
+ *
+ * `background: transparent` and nothing else, deliberately. A stylesheet that
+ * coloured the body would produce a rectangle on any compositor that declines to
+ * composite an ARGB surface, and the requirement is a mascot rather than a
+ * window-shaped picture of one.
+ */
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  /* The platform hands out a size that was only ever a suggestion — 140x150 came
+     back as 200x239 on one path and 200x200 on the other — so the document takes
+     whatever it is given and the mascot holds its own proportion inside it. */
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Nothing is interactive until there is something to do about it. The decision
+   card carries its own affordances, and a mascot that is not asking for anything
+   should not be a target a stray click lands on. */
+body {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/*
+ * The decision card, in a window the size of a mascot.
+ *
+ * Small, opaque and close to the mascot rather than a panel beside it: the card
+ * appears inside the surface's own fragment precisely so that it lands where the
+ * user's eye already is (see `EscalationSurface`), and styling it as a separate
+ * region would undo that by making it look like one.
+ *
+ * The font size and the touch targets are sized for a window rather than for a
+ * page, because the window is 160 pixels of screen and a card laid out at page
+ * scale would be cropped by the box it has to fit in.
+ */
+[data-testid="decision-surface"] {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(24, 26, 34, 0.94);
+  color: #f2f3f7;
+  font: 12px/1.4 system-ui, sans-serif;
+  width: max-content;
+  max-width: 30ch;
+  text-align: left;
+}
+
+[data-testid="decision-surface"] h2 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+[data-testid="decision-session"] {
+  margin: 0;
+  color: #a7adbe;
+}
+
+[data-testid="decision-effects"] {
+  margin: 6px 0;
+  padding-inline-start: 16px;
+  color: #c3c8d6;
+}
+
+[data-testid="decision-actions"] {
+  display: flex;
+  gap: 6px;
+}
+
+[data-testid="decision-actions"] button {
+  font: inherit;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  cursor: pointer;
+}
+
+/* Deny is the answer that stops something, so it is the one that is visually
+   distinct rather than the one that is a hair darker. Hue alone would not be a
+   signal anyone can rely on, which is the same rule the escalation styling
+   follows. */
+[data-testid="decision-deny"] {
+  border-color: rgba(240, 120, 120, 0.55);
+  font-weight: 600;
+}
+

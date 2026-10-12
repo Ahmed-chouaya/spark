@@ -1,0 +1,101 @@
+/*
+ * Layout for the shell harness.
+ *
+ * Two jobs, and neither of them is the product's styling. The controls and the
+ * readout are the page's, and the surface below them is the window's own output
+ * laid out the way a document lays out a child.
+ *
+ * Nothing here sets a width or a height on the surface: the platform hands out
+ * dimensions that were only ever a suggestion, and a harness that padded the
+ * surface to a fixed box would hide exactly that.
+ */
+
+:root {
+  --ink: #1b1d24;
+  --muted: #5a6070;
+  --line: #d4d7e0;
+  --surface: #ffffff;
+  color-scheme: light;
+}
+
+body {
+  font: 14px/1.5 system-ui, sans-serif;
+  color: var(--ink);
+  background: #f4f5f8;
+  margin: 0;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 16px;
+}
+
+h1 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.controls button,
+[data-testid="decision-actions"] button {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.readout {
+  margin: 0;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The surface, framed.
+ *
+ * A border and a background so the run can see where the mascot's own bounds
+ * end — which is the question a transparent window makes hard to answer by
+ * looking at it. It is the harness's frame and not the product's: in the window
+ * the mascot is the whole of it.
+ */
+[data-testid="escalation-surface"] {
+  padding: 16px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+[data-testid="decision-surface"] {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  max-inline-size: 32ch;
+  background: var(--surface);
+}
+
+[data-testid="decision-surface"] h2 {
+  font-size: 14px;
+  margin: 0 0 4px;
+}
+
+[data-testid="decision-effects"] {
+  margin: 8px 0;
+  padding-inline-start: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+[data-testid="decision-actions"] {
+  display: flex;
+  gap: 8px;
+}

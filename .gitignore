@@ -9,5 +9,7 @@ node_modules
 .e2e/logs/
 .e2e/videos/
 relay/target/
+shell/src-tauri/target/
+shell/dist/
 spikes/*/src-tauri/target/
 spikes/*/src-tauri/gen/

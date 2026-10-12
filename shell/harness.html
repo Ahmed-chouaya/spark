@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Spark shell harness</title>
+  </head>
+  <body>
+    <!--
+      The shell's harness, served beside the state and surface harnesses.
+
+      It mounts the shell's own runtime — the same one Tauri loads into the
+      window — against a host that records what it was asked instead of carrying
+      out. That is what lets a run check the shell's *decisions*: which window
+      calls it made, in what order, and what the surface drew in response.
+
+      What it cannot check is the window itself. A native window is not something
+      a browser engine drives, so everything here is the surface and the calls,
+      and the platform's answers are recorded in `shell/README.md` per machine.
+    -->
+    <div id="root"></div>
+    <script type="module" src="./harness/main.tsx"></script>
+  </body>
+</html>

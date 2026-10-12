@@ -28,6 +28,7 @@
   "include": [
     "src",
     "src/dev",
+    "shell",
     "test",
     "scripts/relay-install.ts",
     "vitest.config.ts"
