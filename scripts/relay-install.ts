@@ -20,8 +20,6 @@
  */
 
 import { createInterface } from "node:readline/promises";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   HOOK_EVENTS,
   installHooks,
@@ -29,6 +27,7 @@ import {
   uninstallHooks,
   USER_SETTINGS_PATH,
 } from "../src/relay/install.ts";
+import { relayCommand } from "../src/relay/binary.ts";
 import { readFile } from "node:fs/promises";
 
 /**
@@ -39,10 +38,7 @@ import { readFile } from "node:fs/promises";
  * means. This is also the only place in the companion that knows where the built
  * binary is.
  */
-const RELAY_COMMAND = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "../relay/target/release/spark-relay"
-);
+const RELAY_COMMAND = relayCommand();
 
 const USAGE = `spark-relay — deliver the host agent's hook payload to the companion
 

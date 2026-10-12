@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { currentCompanionAddress } from "../src/relay/address";
 import { openChannel, type CompanionChannel } from "../src/relay/channel";
-import { relayBinaryName } from "./support/paths";
+import { isNativeBinary, relayCommand } from "../src/relay/binary.ts";
 import { dllNames, foreignImports, installedSystemDlls, linkedFromLdd } from "./support/imports";
 
 /**
@@ -26,10 +26,7 @@ import { dllNames, foreignImports, installedSystemDlls, linkedFromLdd } from "./
 
 const RELAY_DIR = join(import.meta.dirname, "../relay");
 const RELAY_SOURCE = join(RELAY_DIR, "src/main.rs");
-const BINARY = join(
-  RELAY_DIR,
-  `target/release/${relayBinaryName("spark-relay")}`
-);
+const BINARY = relayCommand();
 
 beforeAll(() => {
   // Built once for the file. `cargo` is already needed to develop the relay, and
@@ -254,14 +251,16 @@ describe("an unreachable companion never harms the host", () => {
 
 describe("the relay needs nothing on the machine", () => {
   it("is a program, not a script that needs an interpreter", () => {
-    const header = readFileSync(BINARY).subarray(0, 4);
-
-    // An ELF or a PE, not `#!`. A relay that needs a shebang is a relay whose
-    // interpreter has to be found from whatever environment the host agent
-    // spawns hooks in, which is not guaranteed to be the developer's shell.
-    const isElf = header[0] === 0x7f && header.toString("latin1", 1, 4) === "ELF";
-    const isPe = header.toString("latin1", 0, 2) === "MZ";
-    expect(isElf || isPe, "the relay must be a binary, not a script").toBe(true);
+    // A relay that needs a shebang is a relay whose interpreter has to be found
+    // from whatever environment the host agent spawns hooks in, which is not
+    // guaranteed to be the developer's shell. The check lives in
+    // `src/relay/binary.ts` rather than here because the integration check asks
+    // the same question and was once testing for an ELF header alone -- so on
+    // Windows it reported this build as a script needing an interpreter.
+    expect(
+      isNativeBinary(readFileSync(BINARY)),
+      "the relay must be a binary, not a script"
+    ).toBe(true);
   });
 
   it("runs and delivers with no project dependencies present", async () => {

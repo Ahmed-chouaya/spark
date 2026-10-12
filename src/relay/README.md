@@ -169,9 +169,42 @@ makes a model call.
 - **The companion stopped while the host was already running.** The companion
   takes over its own address on start; what happens to a host agent that is
   mid-turn when it stops has not been observed.
-- **Windows.** The named-pipe path compiles behind `#[cfg(windows)]` and has not
-  been built, because this machine has no Windows target. The rules it follows
-  are documented rather than measured.
+
+### Verified on Windows
+
+Measured on a Windows 11 machine, running the suite against a release build:
+
+- The named-pipe channel carried a payload end to end, and the suite's address
+  rule agrees on both platforms: `\\.\pipe\spark-<name>-companion` there,
+  `/tmp/spark-<uid>/companion.sock` here. Both spellings come from one function
+  and one Rust branch, compared rather than trusted.
+- `test/relay.test.ts` ran the real binary and the real interpreter-free claim
+  against it: the process started with an empty `PATH`, no `NODE_PATH` and no
+  `node_modules` above it, and delivered.
+- The import table was read and every entry checked against the system directory
+  rather than against a list, so a build that vendored anything would fail.
+- A real bug was found and fixed from this: `ensurePrivateDirectory` had no
+  `win32` guard, so it would have called `mkdir` on the `\\.\pipe` device
+  namespace. It is guarded now, and pinned by tests that read the source —
+  because a Windows-only defect cannot be reached by running the suite on Linux,
+  which was proved by removing the guards and watching seven tests still pass.
+
+Two things that could not be checked from a Linux machine were wrong anyway, and
+are now pinned structurally rather than by running them:
+
+- **The built binary's name.** `target/release/spark-relay` resolves here and
+  does not exist on Windows, where cargo appends `.exe`. Both scripts that
+  resolve the path had their own hardcoded copy, so `relay:install` would have
+  written hooks pointing at a file that is not there — and reported success.
+  `src/relay/binary.ts` is now the only place that knows where the binary is, and
+  `test/relay-binary-wiring.test.ts` fails if a copy grows back.
+- **What counts as a binary.** The integration check tested for an ELF header
+  alone, so on Windows it would have reported the build as a script needing an
+  interpreter — the opposite of the truth, about the one file the check exists to
+  look at.
+
+Still unmeasured on Windows: the full `relay:verify` run, which is the next
+command to try there.
 
 ### Known on this machine, unrelated to this change
 

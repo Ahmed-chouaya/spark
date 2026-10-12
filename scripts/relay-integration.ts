@@ -35,13 +35,13 @@ import { spawn } from "node:child_process";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import {
   backupPathFor,
   installHooks,
   uninstallHooks,
 } from "../src/relay/install.ts";
+import { isNativeBinary, relayCommand } from "../src/relay/binary.ts";
 import { openChannel } from "../src/relay/channel";
 import { createClaudeCodeSource } from "../src/relay/session-source";
 import { selectState } from "../src/state-selection/reduce";
@@ -57,10 +57,7 @@ import { longestWaiting, type PendingSet } from "../src/escalation/pending";
  */
 const pending: PendingSet = [];
 
-const RELAY_COMMAND = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "../relay/target/release/spark-relay"
-);
+const RELAY_COMMAND = relayCommand();
 
 /** The prompt the real agent is asked. Shortest thing that still starts a session. */
 const PROMPT = "Reply with the single word: ok";
@@ -123,10 +120,27 @@ const runClaude = (
 ): Promise<{ status: number | null; stdout: string; stderr: string; ms: number }> =>
   new Promise((done) => {
     const started = Date.now();
-    const child = spawn("claude", ["-p", PROMPT, ...extra], {
-      cwd: workspace,
-      encoding: "utf8",
-    });
+    // `claude` on Windows is a `.cmd`, and spawning one without a shell fails
+    // with ENOENT even when it is the first thing on PATH — Node resolves an
+    // exact filename or nothing, and does not consult PATHEXT the way a shell
+    // does. The agent runs either way; this is only the check reaching it.
+    //
+    // Deliberately `shell: true` here and nowhere else. In `installHooks` the
+    // opposite is required and enforced: a hook command is written to be spawned
+    // by the host agent directly, so a path needing a shell to resolve would
+    // fail once per event in an environment this project cannot predict. Here we
+    // control the invocation and only need the process to start.
+    const child =
+      process.platform === "win32"
+        ? spawn(`claude.cmd`, ["-p", PROMPT, ...extra], {
+            cwd: workspace,
+            encoding: "utf8",
+            shell: true,
+          })
+        : spawn("claude", ["-p", PROMPT, ...extra], {
+            cwd: workspace,
+            encoding: "utf8",
+          });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (chunk) => (stdout += chunk));
@@ -153,7 +167,7 @@ const withAgent = !process.argv.includes("--no-agent");
 step("1. the relay is a program this machine can run");
 check(existsSync(RELAY_COMMAND), "the relay is built", RELAY_COMMAND);
 check(
-  readFileSync(RELAY_COMMAND).subarray(0, 2).toString() === "\x7fE",
+  isNativeBinary(readFileSync(RELAY_COMMAND)),
   "it is a binary rather than a script needing an interpreter"
 );
 

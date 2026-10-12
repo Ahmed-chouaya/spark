@@ -32,14 +32,3 @@ export function posixPath(value: string): string {
 export function sourceName(from: string, target: string): string {
   return posixPath(target.slice(from.length + (from.endsWith(sep) ? 0 : 1)));
 }
-
-/**
- * The relay's built binary, named the way this platform names it.
- *
- * Cargo appends `.exe` on Windows and nothing anywhere else, so a hardcoded name
- * silently found nothing there — and every test that inspects the binary's bytes
- * then failed for want of a file rather than for want of a property.
- */
-export function relayBinaryName(base: string): string {
-  return process.platform === "win32" ? `${base}.exe` : base;
-}
