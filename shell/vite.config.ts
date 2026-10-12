@@ -29,9 +29,14 @@ export default defineConfig({
     emptyOutDir: true,
     // A mascot, a card, and a stylesheet. One file each, because the window is
     // created once and never reloaded, so a request-per-module waterfall buys
-    // nothing.
+    // nothing and a code-split bundle would only add a round trip to the first
+    // render — which is the render that has to find the host's report.
     target: "es2022",
     minify: "esbuild",
+    // React and the nine mascot states are the whole of it. The default 500 kB
+    // warning fires on a bundle this small by design, and a warning on every
+    // `npm run companion` trains the reader to skip the build output.
+    chunkSizeWarningLimit: 600,
   },
 
   server: {

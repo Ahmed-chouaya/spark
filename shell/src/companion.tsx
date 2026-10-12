@@ -24,7 +24,7 @@
  * host is asked to carry out an answer rather than to produce one.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ReactElement } from "react";
 import { canHoldPersistentSurface, readHostWindow } from "../../src/escalation/capability";
 import { useCompanionSurface, usePendingDecisions } from "../../src/escalation/useCompanionSurface";
@@ -101,16 +101,19 @@ export function useCompanionShell({
    * adapter, `applyEvent`, sessions. This file adds no step and interprets
    * nothing, which is what lets a test claim the fold is the fold's.
    *
-   * The adapter is built once per shell rather than per payload so the
-   * in-flight tool timings it keeps survive from one hook to the next — which is
-   * the state that makes a `PostToolUse` mean "that tool took this long".
+   * The adapter is built once per shell rather than per payload so the in-flight
+   * tool timings it keeps survive from one hook to the next — which is the state
+   * that makes a `PostToolUse` mean "that tool took this long". The lazy
+   * initialiser is what makes "once" true: `useRef(build())` would *evaluate* the
+   * build on every render and throw all but the first away, and a plain module
+   * constant would be shared by every shell on the page.
    */
-  const adapter = useRef(createClaudeCodeAdapter());
+  const [adapter] = useState(createClaudeCodeAdapter);
   const receive = useCallback(
     (payload: Uint8Array) => {
-      setSessions((current) => applyReceivedPayload(current, adapter.current, decode(payload)));
+      setSessions((current) => applyReceivedPayload(current, adapter, decode(payload)));
     },
-    [decode]
+    [adapter, decode]
   );
 
   // The window's visibility is the surface's visibility, asked rather than
