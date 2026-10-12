@@ -2,77 +2,140 @@
  * Platform capability: can this platform keep a surface above other windows that
  * are not focused?
  *
- * ## Why the layer-shell protocol is the deciding factor
+ * ## Why each platform is asked about itself
  *
- * A compositor owns the stacking order of its clients. "Keep this window on
- * top" is therefore not a request a client can make of a Wayland compositor the
- * way it can of a window manager: there is no honoured way to make it, and the
- * usual flags are accepted and discarded. What a client gets instead is whatever
- * it was placed into, and the only protocol that places a client into a layer of
- * its own — one that stays above ordinary windows while some other window holds
- * the keyboard — is `zwlr_layer_shell_v1`.
+ * The previous version of this module asked one question and sent it to every
+ * platform: *did the compositor grant `zwlr_layer_shell_v1` to this window's
+ * surface?* That is the right question for a Wayland compositor, where the
+ * compositor owns the stacking order and the layer protocol is the only way into
+ * a stack of its own. It is not a question Windows or macOS can answer at all:
+ * neither has a compositor, neither has protocols, and neither will ever grant a
+ * Wayland protocol to anything.
  *
- * Compositors differ on whether they implement it, and they differ for reasons
- * that have nothing to do with each other: one implements it, another never
- * will. So the capability is a property of *the compositor running right now*,
- * it is decided per platform rather than per build, and a build that asks this
- * question at runtime gets the right answer on all of them.
+ * So the answer came back empty everywhere, and the empty answer was read as
+ * "no platform can float a persistent surface" when what had actually been
+ * measured was "no host asked a question these platforms understand". The empty
+ * list was true. The inference from it was the bug, and a category error is not
+ * fixed by working harder on the inference.
  *
- * ## What the probe actually measures
+ * Each platform is now asked something it can answer about itself, and the
+ * answer is published next to the name of the question, so a reader can see
+ * which one produced it and go check that one. `placement` is not decoration: a
+ * report of `{ placement: "windows-topmost", held: true }` can be audited,
+ * whereas a list containing the string `"windows-topmost"` among protocol names
+ * would be a lie about the kind of thing that is in it.
  *
- * One thing, and it is deliberately the narrowest question available: the list
- * of protocols the compositor granted this window's surface when it was bound.
- * A window that came up with a layer is a window that can stay on top; one that
- * came up without one cannot, whatever it asks for afterwards.
+ * ## Why a value the host wrote is not an answer
+ *
+ * The runtime offers `is_always_on_top()`, and reading it is the shape of
+ * verification this project keeps asking for. It is not verification. On two of
+ * its three desktop platforms it returns an atomic boolean or a flag the host
+ * itself set a moment earlier, and on GNOME — the one machine where the
+ * behaviour has been observed — the flag is accepted and then ignored, which is
+ * already recorded in `docs/platform-findings.md`.
+ *
+ * A write-echo is worse than no answer, because it looks like evidence: a method
+ * named `is_*` returning `true` after a `set_*(true)` is exactly what a reviewer
+ * is looking for and cannot tell from the outside. So the published value may
+ * only ever be something the platform itself states — a style bit the kernel
+ * holds about a real window, a window level the window server holds, a protocol
+ * the compositor bound to a surface. `test/shell-capability.test.ts` fails the
+ * build if the Rust side reaches for the write-echo at all.
  *
  * It does not read an operating-system name, a desktop environment, a window
- * manager, or a build flag. None of those is the property, all of them are a
- * proxy for it, and every proxy is wrong somewhere — which is how "this works on
- * Linux" turns into a product that floats on two desktops and sinks on the
- * third. The protocol list is the fact itself rather than a rumour about it.
+ * manager, or a build flag either. Each of those is a proxy for the property,
+ * and every proxy is wrong somewhere — which is how "this works on Linux" turns
+ * into a product that floats on two desktops and sinks on the third.
  *
- * The failure direction is chosen, not incidental. A host that cannot answer
- * reports no layer, which selects the escalate-only behaviour: a companion that
- * appears when it has something to say and is otherwise absent. That is correct
- * everywhere. The opposite mistake would report a layer that was never granted,
- * and produce a surface that believes it is floating while it is not.
+ * ## The failure direction, which is the most important property here
+ *
+ * ```
+ *   the platform answers "yes"      -> persistent
+ *   the platform answers "no"       -> escalate-only
+ *   there is no platform to ask     -> escalate-only
+ * ```
+ *
+ * Both non-answers select escalate-only. That is unchanged from before and it is
+ * deliberate rather than incidental: a companion that appears when it has
+ * something to say and is otherwise absent is correct on every platform,
+ * including the ones nobody has run it on. The opposite mistake — reporting a
+ * capability that was never granted — produces a surface that believes it is
+ * floating while it is not, which fails visibly and constantly rather than
+ * quietly costing a feature.
+ *
+ * So a report that names no platform at all is not an error and not a missing
+ * value. It is an answer: `placement: "unknown"`, `held: false`, and the
+ * escalate-only behaviour. It is also kept *distinguishable* from a platform
+ * that was asked and said no, because a report reading `{ placement:
+ * "windows-topmost", held: false }` is a fact about Windows and a report
+ * reading `{ placement: "unknown", held: false }` is a fact about the host — and
+ * a reader debugging a machine needs to be able to tell which they are looking
+ * at.
  */
 
-/** The protocol whose presence is what makes a persistent surface possible. */
-export const LAYER_SHELL = "zwlr_layer_shell_v1";
+import {
+  SURFACE_PLACEMENTS,
+  UNKNOWN_HOST_WINDOW as UNKNOWN_HOST_WINDOW_PLACEHOLDER,
+  UNKNOWN_PLACEMENT,
+  type SurfacePlacement,
+// The extension is written out because `scripts/probe-capability.mjs` runs this
+// module under bare `node`, whose ESM resolver will not add one. Every other
+// import in `src/` omits it, so this looks inconsistent and is not: it is the
+// price of a tool that has no bundler.
+} from "./placements.ts";
 
 /**
  * What the host reports about the window it opened.
  *
- * Written as a protocol list rather than a boolean on purpose: the boolean would
- * have to be trusted, and the list can be checked against the protocol that
- * actually decides the question.
+ * Modelled as a mechanism plus an answer rather than as a boolean because the
+ * boolean would have to be trusted: nothing here can check *why* a host said
+ * yes, only which question it says it asked. Naming the question is the part
+ * that survives review.
  */
 export interface HostWindow {
-  /** Protocols the compositor granted this window's surface when it bound it. */
-  readonly protocols: readonly string[];
+  /** How this platform was asked, so the answer can be audited. */
+  readonly placement: SurfacePlacement;
+  /** What the platform answered. Never anything the host requested. */
+  readonly held: boolean;
 }
+
+export type { SurfacePlacement };
 
 /**
  * Where a native host publishes its report for this document to read.
  *
- * A document cannot bind a Wayland surface for itself, so the host that opened
- * the window is the only party that knows the answer, and it hands it over here.
- * Nothing writes to this key in this repository — it is the seam `agent-relay`
- * and the eventual shell will fill — so its absence is the ordinary case and is
- * handled as one rather than as a failure.
+ * A document cannot inspect a window handle, a window level or a compositor's
+ * protocol grants for itself, so the host that opened the window is the only
+ * party that can answer, and it hands the answer over here. Its absence is the
+ * ordinary case — a document in a browser tab — and is handled as an answer
+ * rather than as a failure, because a tab genuinely has no surface of its own.
  */
 export const HOST_WINDOW_KEY = "__SPARK_HOST_WINDOW__";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
+const PLACEMENTS: readonly SurfacePlacement[] = SURFACE_PLACEMENTS;
+
+export { SURFACE_PLACEMENTS };
+
 /**
- * Read the host's protocol report out of a scope, or `null` if there is none.
+ * The report of a host that could ask nothing.
  *
- * `null` is the answer from a plain browser document, and it is a real answer:
- * a document in a tab has no surface of its own to be granted a layer, so it
- * genuinely cannot hold one.
+ * Published rather than invented here, because it is a real answer with a real
+ * consequence and it is the one a plain browser document produces: there is no
+ * window behind it to ask, and a document with no window cannot float.
+ */
+export const UNKNOWN_HOST_WINDOW: HostWindow = UNKNOWN_HOST_WINDOW_PLACEHOLDER;
+
+/**
+ * Read the host's report out of a scope, or `null` if there is none.
+ *
+ * `null` means "there is no host here", which is the browser case and a real
+ * answer. A report that *is* present but unreadable — a host handing back
+ * nonsense, or a mechanism name this build has never heard of — is refused
+ * rather than guessed at, because the consequence of an unreadable report is
+ * the behaviour that works everywhere, which is what a refusal means.
  */
 export function readHostWindow(scope: unknown = globalThis): HostWindow | null {
   if (!isRecord(scope)) return null;
@@ -80,19 +143,33 @@ export function readHostWindow(scope: unknown = globalThis): HostWindow | null {
   const host = scope[HOST_WINDOW_KEY];
   if (!isRecord(host)) return null;
 
-  const protocols = host["protocols"];
-  if (!Array.isArray(protocols)) return null;
+  const placement = host["placement"];
+  const held = host["held"];
 
-  return { protocols: protocols.filter((name): name is string => typeof name === "string") };
+  if (typeof placement !== "string" || !PLACEMENTS.includes(placement as SurfacePlacement)) {
+    return null;
+  }
+  if (typeof held !== "boolean") return null;
+
+  return { placement: placement as SurfacePlacement, held };
 }
 
 /**
  * Whether this platform can keep a persistent surface above other windows.
  *
- * One protocol lookup against what the compositor actually granted. `null`
- * answers `false`, so an unknown host gets the behaviour that works everywhere
- * rather than one that depends on the guess being right.
+ * `null` answers `false`, so a document with no host behind it gets the
+ * behaviour that works everywhere rather than one that depends on a guess being
+ * right.
+ *
+ * A report that names no mechanism also answers `false`, whatever it claims to
+ * hold. That is the failure direction applied one step further: a host that
+ * could not ask anything has not been told yes by anybody, so an affirmative
+ * sitting beside `placement: "unknown"` is the host asserting rather than the
+ * platform answering, and this is the one place a reported boolean is not taken
+ * at its word.
  */
 export function canHoldPersistentSurface(host: HostWindow | null = readHostWindow()): boolean {
-  return host !== null && host.protocols.includes(LAYER_SHELL);
+  if (host === null) return false;
+  if (host.placement === UNKNOWN_PLACEMENT) return false;
+  return host.held;
 }

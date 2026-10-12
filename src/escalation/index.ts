@@ -4,7 +4,8 @@
  *
  * Four pieces, each owning one question:
  *
- *   capability.ts           can this platform keep a surface above others?
+ *   capability.ts           can this platform keep a surface above others, and
+ *                           which question was it asked?
  *   pending.ts              which request is being offered, and what a decision
  *                           applies to
  *   EscalationSurface.tsx   is it on screen, and does it look escalated
@@ -17,12 +18,14 @@
  * and no code path from this work.
  */
 export {
-  LAYER_SHELL,
   HOST_WINDOW_KEY,
+  SURFACE_PLACEMENTS,
+  UNKNOWN_HOST_WINDOW,
   canHoldPersistentSurface,
   readHostWindow,
 } from "./capability";
 export type { HostWindow } from "./capability";
+export type { SurfacePlacement } from "./placements";
 
 export {
   ESCALATION_LIFT,

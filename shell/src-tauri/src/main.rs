@@ -30,6 +30,20 @@
 //! requirements name are a document a test can read, and the code cannot drift
 //! away from them.
 //!
+//! The window and its webview are built as **two steps**, which is unusual enough
+//! to need saying. The capability report has to be read from the window itself —
+//! a style bit on the real `HWND` on Windows, a level on the real `NSWindow` on
+//! macOS — and the report has to reach the document before its first render,
+//! because that is where the surface decides what it shows. One
+//! `WebviewWindowBuilder::build()` cannot do both: it attaches the initialisation
+//! script before any window exists to ask.
+//!
+//! So `WindowBuilder` builds the window, `capability::ask` reads the platform's
+//! own answer off it, and `add_child` attaches a webview carrying that answer as
+//! its initialisation script. The alternative — build in one step and `eval`
+//! afterwards — is a race, not a shortcut: on WebView2 `eval` runs against
+//! whatever document is current, which before the page has loaded is not the page.
+//!
 //! Three of the requirements are about *verifying* rather than requesting, and
 //! they are why most of the reporting below exists:
 //!
@@ -40,8 +54,8 @@
 //! - a position is requested, and then read back. `docs/platform-findings.md`
 //!   records `set_position` returning `Ok` and leaving the window at 0,0 on GNOME
 //!   Wayland, so a successful call is not evidence that anything happened.
-//! - the protocol list published to the document is the platform's *grant*, not
-//!   the host's request. See `capability.rs`.
+//! - the report published to the document is the platform's own answer, read off
+//!   this window. See `capability.rs`.
 //!
 //! What none of this can check is whether the compositor honoured a stacking
 //! request it agreed to. No API reports that. It is recorded as unmeasured in
@@ -221,22 +235,13 @@ fn report(message: &str) {
 }
 
 fn main() {
-    // The platform's answer, read once and before anything exists to be reported
-    // about — because the document has to be able to read it during its own first
-    // render, and a report that arrives later is a report that arrives after the
-    // decision it decides.
-    let published = capability::initialization_script(&capability::capability_report(
-        &capability::REQUESTED,
-        &capability::granted_protocols(),
-    ));
-
     tauri::Builder::default()
         .setup(move |app| {
             // Built from the declaration rather than from a second list of
             // properties, so `tauri.conf.json` stays the one place the window's
-            // chrome is described. `create: false` in that file is what allows
-            // the initialization script to be attached here, before the document
-            // exists — a setup-time write would be a write into nothing.
+            // chrome is described. `create: false` in that file is what puts this
+            // in our hands at all: nothing exists to measure until we build it,
+            // and nothing to publish into until we attach a webview.
             let declared = app
                 .config()
                 .app
@@ -245,9 +250,29 @@ fn main() {
                 .ok_or("tauri.conf.json declares no window")?
                 .clone();
 
-            tauri::WebviewWindowBuilder::from_config(app.handle(), &declared)?
-                .initialization_script(published)
-                .build()?;
+            // Step one: the window, with no webview in it yet. Every platform's
+            // question except Wayland's is a question about this object — its
+            // handle, its level — so it has to exist before it can be asked.
+            let window = tauri::window::WindowBuilder::from_config(app.handle(), &declared)?.build()?;
+
+            // Step two: the answer, read from the window the platform gave us,
+            // and not from anything this host requested. On a platform that has
+            // no such mechanism the answer is `unknown`, which selects the
+            // escalate-only behaviour — correct everywhere, and correct for this
+            // shell on GNOME, where Mutter does not implement the layer protocol.
+            let published =
+                capability::initialization_script(&capability::capability_report(&window));
+
+            // Step three: the webview, carrying that answer as an initialisation
+            // script so it is in the document before any of the page's own
+            // JavaScript runs. `add_child` runs inline on the main thread, so
+            // this is two steps rather than a deadlock.
+            window.add_child(
+                tauri::webview::WebviewBuilder::from_config(&declared)
+                    .initialization_script(published),
+                tauri::LogicalPosition::new(0.0, 0.0),
+                window.inner_size()?,
+            )?;
 
             let window = app
                 .get_webview_window(COMPANION)

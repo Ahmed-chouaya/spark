@@ -11,7 +11,15 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # The window and the IPC bridge. Nothing else is here that could interpret
 # anything: see `src/main.rs` for what this program is allowed to know.
-tauri = { version = "2", features = [] }
+# `unstable` for exactly one thing: building the window and its webview as two
+# steps rather than one. The capability report has to be read from the window
+# itself — a style bit on the real `HWND`, a level on the real `NSWindow` — and
+# a single `WebviewWindowBuilder::build()` attaches the initialisation script
+# before any window exists to measure. `WindowBuilder` + `add_child` lets the
+# measurement happen in between, which is the only ordering in which the report
+# is both the platform's own answer and present for the document's first render.
+# See the module note in `src/capability.rs`.
+tauri = { version = "2", features = ["unstable"] }
 
 # For the two shapes that cross the IPC boundary: the work area, and where the
 # window ended up. Both are plain data with no interpretation attached.
@@ -28,6 +36,35 @@ interprocess = { version = "2", features = [] }
 # the same crate for the same reason and with no other use.
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[dev-dependencies]
+# Only for one assertion in `src/capability.rs`: that the report serialises with
+# the field names the document reads. Hand-building the JSON would be testing a
+# second implementation of the thing being checked.
+serde_json = "1"
+
+# # Windows
+#
+# Declared explicitly rather than relied on transitively, because the whole
+# point of the Windows capability read is that it asks the kernel about a real
+# window handle rather than reading back a flag the host set. `windows-sys` is
+# already in `Cargo.lock` as a dependency of Tauri, so it is reachable either
+# way — and a direct use of a transitive crate is one `cargo update` from
+# vanishing, which would turn this from a read of the platform's own state into
+# a compile error at the least obvious moment.
+[target.'cfg(windows)'.dependencies]
+# Only for `GetWindowLongW`, `GWL_EXSTYLE` and `WS_EX_TOPMOST`.
+windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
+
+# # macOS
+#
+# Declared for the same reason as `windows-sys`, and for a second one: the
+# window's level is read straight off the `NSWindow` rather than through the
+# runtime's `is_always_on_top()`. On this platform that accessor happens to be a
+# genuine query, which is exactly what makes it a trap — see `src/capability.rs`.
+[target.'cfg(target_os = "macos")'.dependencies]
+# Only for `NSWindow::level` and the floating level it is compared against.
+objc2-app-kit = "0.3"
 
 [profile.dev]
 # The mascot is small and the window is one surface. A debug webview costs more

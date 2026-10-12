@@ -2,8 +2,8 @@
  * The seam between the document and the window it is drawn on.
  *
  * A webview cannot open a local socket, cannot move itself, and cannot ask the
- * compositor what it was granted. All three are things the native host can do
- * and this document cannot, so all three arrive here as four calls and one
+ * platform what it granted this window. All three are things the native host can
+ * do and this document cannot, so all three arrive here as four calls and one
  * published report.
  *
  * ## Deliberately not a decision
@@ -23,7 +23,7 @@
  * be observed where there is no window to observe them on.
  */
 
-import type { HostWindow } from "../../src/escalation/capability";
+import { readHostWindow, type HostWindow } from "../../src/escalation/capability";
 
 /** A rectangle in physical pixels, as the platform reports one. */
 export interface WorkArea {
@@ -211,15 +211,18 @@ function asBytes(payload: unknown): Uint8Array | null {
   return bytes;
 }
 
-/** What the document was told, from whichever host published it. */
+/**
+ * What the document was told, from whichever host published it.
+ *
+ * Deliberately a *different* reader from `src/escalation`'s `readHostWindow`,
+ * even though the two now agree on what a report looks like: the escalation
+ * module owns the vocabulary and the decision, and this file is the seam. A
+ * second implementation of the *reader* here would be a second answer to "did
+ * that host say yes", and the shell would not be reading the report the surface
+ * decides on.
+ *
+ * So this stays a re-export rather than a copy.
+ */
 export function readPublishedReport(scope: unknown = globalThis): HostWindow | null {
-  const host = (scope as Record<string, unknown> | null | undefined)?.["__SPARK_HOST_WINDOW__"];
-  if (typeof host !== "object" || host === null) return null;
-
-  const protocols = (host as Record<string, unknown>)["protocols"];
-  if (!Array.isArray(protocols)) return null;
-
-  return {
-    protocols: protocols.filter((name): name is string => typeof name === "string"),
-  };
+  return readHostWindow(scope);
 }

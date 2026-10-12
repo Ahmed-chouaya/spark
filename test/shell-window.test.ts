@@ -151,13 +151,22 @@ describe("the window is shown only when it has something to say", () => {
 });
 
 describe("the window is built from the declaration rather than beside it", () => {
-  it("declares itself as built by the host, which is what allows the init script", () => {
-    // `create: false` is the whole reason the platform's answer can reach the
-    // document before its own JavaScript runs: a window Tauri creates itself is a
-    // window whose document already exists by the time anyone could publish
-    // anything to it.
+  it("declares itself as built by the host, in two steps, so the report can be measured first", () => {
+    // `create: false` is what puts the window in our hands at all. Tauri creating
+    // it itself would leave nothing to measure between the window appearing and
+    // the document loading, and the capability report is read off this window —
+    // a style bit on the real `HWND` on Windows, a level on the real `NSWindow` on
+    // macOS.
+    //
+    // So the window is built first and the webview is attached to it afterwards,
+    // which is the only ordering in which the report is both the platform's own
+    // answer and present for the document's first render. One
+    // `WebviewWindowBuilder::build()` cannot do both: it attaches the
+    // initialisation script before any window exists to ask.
     expect(theWindow().create).toBe(false);
-    expect(mainCode()).toMatch(/WebviewWindowBuilder::from_config/);
+    expect(mainCode()).toMatch(/WindowBuilder::from_config/);
+    expect(mainCode()).toMatch(/add_child\(/);
+    expect(mainCode()).toMatch(/WebviewBuilder::from_config/);
   });
 
   it("names the window rather than indexing the list", () => {
