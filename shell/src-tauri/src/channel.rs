@@ -91,21 +91,43 @@ const POLL: Duration = Duration::from_millis(100);
 /// enough that a live companion produces a refusal rather than a hang.
 const TAKEOVER_SPIN: Duration = Duration::from_secs(2);
 
+/// How long a close waits for the reader to let go of the address.
+///
+/// Generous against `POLL` rather than tight, because this is only ever reached
+/// on the way out and a missed release shows up as a confusing `EADDRINUSE` on
+/// the next start rather than as anything the user would recognise here.
+const RELEASE_WAIT: Duration = Duration::from_millis(500);
+
 /// The running channel.
 pub struct Channel {
     stop: Arc<AtomicBool>,
+    /// Told when the reader has dropped the listener, which is what reclaims the
+    /// address. See `close`.
+    released: std::sync::mpsc::Receiver<()>,
+    reader: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Channel {
-    /// Stop reading and release the address.
+    /// Stop reading and wait for the address to be released.
     ///
-    /// The listener is dropped by the reader thread on its way out, which is what
-    /// removes the socket entry. `close` therefore waits for the reader rather
-    /// than signalling and returning, because returning early would report a
-    /// release that had not happened yet — and the next start's `EADDRINUSE` is
-    /// exactly the failure this is here to prevent.
-    pub fn close(&self) {
+    /// The reader owns the listener, so releasing the address means the reader
+    /// has finished and dropped it. Waiting for that rather than returning
+    /// immediately is the whole of the requirement: a caller that reported a
+    /// release that had not happened yet would be leaving the next start to
+    /// discover a leftover, and "a later start is not blocked by the previous
+    /// one's channel" is a property of the moment `close` returns.
+    ///
+    /// Bounded, because a caller on the way out is usually also about to exit the
+    /// process. The accept is non-blocking, so the reader notices within one
+    /// `POLL` and the bound is generous rather than tight.
+    pub fn close(&mut self) {
         self.stop.store(true, Ordering::SeqCst);
+
+        let _ = self.released.recv_timeout(RELEASE_WAIT);
+
+        if let Some(reader) = self.reader.take() {
+            let _ = reader.join();
+        }
     }
 }
 
@@ -162,13 +184,27 @@ where
 
     let stop = Arc::new(AtomicBool::new(false));
     let thread_stop = stop.clone();
+    let (released_tx, released) = std::sync::mpsc::channel();
 
     // The listener is moved rather than cloned, so the thread owns the socket
     // entry outright: dropping it there is what reclaims the address, and a
     // clone held here would keep the file alive after the thread had gone.
-    std::thread::spawn(move || pump(listener, thread_stop, on_payload));
+    let reader = std::thread::spawn(move || {
+        // The listener is dropped at the end of this closure, which is what
+        // reclaims the address: the thread owns the socket entry outright, so a
+        // clone held by the caller would keep the file alive after it had gone.
+        pump(listener, thread_stop, on_payload);
 
-    Ok(Channel { stop })
+        // Only now is the address released. Telling `close` before this point
+        // would be reporting a release that had not happened.
+        let _ = released_tx.send(());
+    });
+
+    Ok(Channel {
+        stop,
+        released,
+        reader: Some(reader),
+    })
 }
 
 /// The address this shell should listen on, or `None` when it was not given one.

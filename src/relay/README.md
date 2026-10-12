@@ -120,8 +120,10 @@ the backup in `spark-backups/` is kept either way.
 - **Blocking hooks, approvals, and the fail-open invariant under one.** Those are
   `decision-transport`. A hook that must wait for a response reintroduces the
   branch this design removes, which is why it gets its own change.
-- **The window.** That is `app-shell`. Until then `npm run companion` prints what
-  the reduction decided instead of showing it.
+- **The window.** That was `app-shell`, and it is now `shell/`: `npm run
+  companion` opens a window and the reduction is drawn on it. The relay is
+  unchanged, and it still writes bytes and exits — the shell reads them and hands
+  them on unchanged, which `test/shell-channel.test.ts` checks over a real socket.
 - **A second host agent.** It is one more file in `src/state-selection/adapters`
   and no change anywhere else. The adapter boundary is what makes that true, and
   it was true before the relay existed.
@@ -165,7 +167,8 @@ makes a model call.
 
 - **The interactive terminal session.** A `-p` run exercises the same hook
   machinery, but a session started in a terminal and watched on a surface has not
-  been. It needs a window, which is `app-shell`.
+  been. It needs someone looking at the window, and `shell/README.md` records
+  that nobody has yet on any platform.
 - **The companion stopped while the host was already running.** The companion
   takes over its own address on start; what happens to a host agent that is
   mid-turn when it stops has not been observed.

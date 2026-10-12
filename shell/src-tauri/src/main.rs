@@ -53,7 +53,7 @@
 mod capability;
 mod channel;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -264,7 +264,7 @@ fn main() {
                 ));
             }
 
-            let channel = Arc::new(channel::open({
+            let channel = channel::open({
                 let window = window.clone();
                 move |payload| {
                     // The bytes, unchanged. Everything that knows what they mean
@@ -273,8 +273,13 @@ fn main() {
                         report(&format!("a payload could not reach the window: {error}"));
                     }
                 }
-            })?);
+            })?;
 
+            // Behind a mutex because `close` has to *mutate* the channel to take
+            // its reader thread, and the window's event callback is a `Fn` rather
+            // than a `FnMut`. The lock is only ever held for the length of a
+            // shutdown, which is the one time nothing else is happening.
+            let channel = Arc::new(Mutex::new(channel));
             let application = app.handle().clone();
 
             window.on_window_event(move |event| {
@@ -284,7 +289,9 @@ fn main() {
                 // answering a hook. `exit` rather than returning into an event
                 // loop with nothing on screen.
                 if matches!(event, WindowEvent::Destroyed) {
-                    channel.close();
+                    if let Ok(mut channel) = channel.lock() {
+                        channel.close();
+                    }
                     application.exit(0);
                 }
             });

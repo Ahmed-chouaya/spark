@@ -51,7 +51,20 @@ That is the whole of the persistent branch, and it is confirmed on real hardware
 
 The probe was not captured on this platform in the same run, so
 `canHoldPersistentSurface()` returning `true` here is *inferred* from the behaviour rather
-than read from the granted protocol list. `app-shell` should confirm both agree.
+than read from the granted protocol list. `app-shell` was asked to confirm both agree.
+
+**They do not agree, and the disagreement is the finding.** The shell reads the granted
+protocol list back before it opens its window and publishes exactly what it was given —
+see `shell/src-tauri/src/capability.rs`. On every platform Tauri can open a window on,
+that list is empty: `zwlr_layer_shell_v1` places a client in a layer by *replacing* the
+role a window would otherwise have, and Tauri's backend creates toplevels. So the shell
+runs escalate-only here too, including on Windows 11, where the observation above says a
+persistent surface would work.
+
+That is the safe direction and it is correct everywhere, but it costs the persistent
+companion the platform can actually provide. It is recorded in `shell/README.md` rather
+than worked around, and it is the honest consequence of defining the capability as a
+protocol list rather than as a boolean this project would have to guess at per platform.
 
 ## macOS
 
