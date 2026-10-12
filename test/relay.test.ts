@@ -5,7 +5,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { currentCompanionAddress } from "../src/relay/address";
 import { openChannel, type CompanionChannel } from "../src/relay/channel";
 import { relayBinaryName } from "./support/paths";
-import { dllNames, isWindowsSystemDll, linkedFromLdd } from "./support/imports";
+import { dllNames, foreignImports, installedSystemDlls, linkedFromLdd } from "./support/imports";
 
 /**
  * The relay, run as the host agent runs it.
@@ -313,14 +313,18 @@ describe("the relay needs nothing on the machine", () => {
     ).toBeGreaterThan(0);
 
     if (isWindows) {
-      // A PE imports by name only, so "belongs to Windows" cannot be checked
-      // against a path the way a shared object can. It is checked against what
-      // Windows itself ships, and the failure message names what was found so
-      // an unexpected-but-genuine system DLL is a one-line fix.
-      const foreign = linked.filter((name) => !isWindowsSystemDll(name));
+      // Not an allowlist of acceptable names — that is maintenance that Rust's
+      // standard library invalidates whenever it gains a dependency, which it
+      // did the moment the C runtime started pulling in `dbghelp.dll` for
+      // backtraces. The property is that every import is a library this Windows
+      // already ships, which is a question about the system directory rather
+      // than about a list.
+      const foreign = foreignImports(linked, installedSystemDlls());
+
       expect(
         foreign,
-        `only Windows system libraries may be imported (all found: ${linked.join(", ")})`
+        `every imported library must already exist in this Windows install ` +
+          `(all found: ${linked.join(", ")})`
       ).toEqual([]);
       return;
     }

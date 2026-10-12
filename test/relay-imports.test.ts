@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dllNames, isWindowsSystemDll } from "./support/imports";
+import { dllNames, foreignImports, isApiSet } from "./support/imports";
 
 /**
  * The DLL scanner, tested without a PE binary anywhere in sight.
@@ -72,39 +72,58 @@ describe("reading imported libraries out of a PE", () => {
   });
 });
 
-describe("what counts as a Windows system library", () => {
-  it("accepts what the C runtime and the kernel need", () => {
-    for (const name of [
-      "KERNEL32.dll",
-      "ntdll.dll",
-      "ucrtbase.dll",
-      "vcruntime140.dll",
-      "msvcrt.dll",
-      "ADVAPI32.dll",
-      "ws2_32.dll",
-    ]) {
-      expect(isWindowsSystemDll(name), name).toBe(true);
-    }
+describe("telling a Windows system library from one that had to be installed", () => {
+  // A synthetic System32. The real list is a few thousand entries and is the
+  // machine's, not ours, so these stand in for it — the question being asked is
+  // "is this name one Windows already had", not "is this name on our list".
+  const system = new Set(
+    ["kernel32.dll", "ntdll.dll", "ucrtbase.dll", "vcruntime140.dll", "dbghelp.dll"].map((n) =>
+      n.toLowerCase()
+    )
+  );
+
+  it("accepts a library the installation already has", () => {
+    expect(foreignImports(["KERNEL32.dll", "ntdll.dll", "vcruntime140.dll"], system)).toEqual([]);
   });
 
-  it("accepts the API sets, which are Windows' own indirection layer", () => {
-    expect(isWindowsSystemDll("api-ms-win-core-synch-l1-2-0.dll")).toBe(true);
+  it("accepts the case the import table and the directory disagree on", () => {
+    // The table said VCRUNTIME140.dll and the directory says vcruntime140.dll.
+    // On Windows they are the same file, and treating them as different would
+    // fail every Rust build on the platform.
+    expect(foreignImports(["VCRUNTIME140.dll"], system)).toEqual([]);
   });
 
-  it("refuses a language runtime", () => {
-    // The exact thing this assertion exists to catch: a relay that cannot start
-    // because an interpreter is missing.
-    for (const name of ["node.dll", "python311.dll", "mscoree.dll", "libc++abi.dll"]) {
-      expect(isWindowsSystemDll(name), name).toBe(false);
-    }
+  it("accepts an API set, which resolves to a file rather than being one", () => {
+    expect(isApiSet("api-ms-win-crt-runtime-l1-1-0.dll")).toBe(true);
+    expect(foreignImports(["api-ms-win-core-synch-l1-2-0.dll"], system)).toEqual([]);
   });
 
-  it("refuses a third-party library that a build might have vendored", () => {
-    expect(isWindowsSystemDll("openssl-3-x64.dll")).toBe(false);
-    expect(isWindowsSystemDll("sqlite3.dll")).toBe(false);
+  it("refuses a language runtime, which is the whole point", () => {
+    // A relay that cannot start because an interpreter is missing is the
+    // failure this exists to catch.
+    expect(foreignImports(["node.dll", "python311.dll", "mscoree.dll"], system)).toEqual([
+      "mscoree.dll",
+      "node.dll",
+      "python311.dll",
+    ]);
   });
 
-  it("is not fooled by a system name with something appended", () => {
-    expect(isWindowsSystemDll("kernel32.dll.evil")).toBe(false);
+  it("refuses a library a build vendored", () => {
+    expect(foreignImports(["openssl-3-x64.dll"], system)).toEqual(["openssl-3-x64.dll"]);
+  });
+
+  it("refuses everything when the system directory cannot be read", () => {
+    // Fail closed. An unreadable System32 is not evidence that the imports are
+    // fine; it is the absence of evidence, and the safe reading of "we could not
+    // check" is "this is not proven".
+    expect(foreignImports(["kernel32.dll"], new Set())).toEqual(["kernel32.dll"]);
+  });
+
+  it("accepts a library Windows gained since the test was written", () => {
+    // The property a list cannot express: a DLL that did not exist when this
+    // test was written, arriving with a Windows update, is still not something
+    // the user had to install.
+    const later = new Set([...system, "brandnew.dll"]);
+    expect(foreignImports(["brandnew.dll"], later)).toEqual([]);
   });
 });
