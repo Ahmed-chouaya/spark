@@ -108,26 +108,33 @@ pub struct Point {
 /// over an unknown work area would trade a mascot in a known place for no mascot
 /// at all.
 #[tauri::command]
-fn work_area(window: tauri::WebviewWindow) -> Option<Rect> {
-    let cursor = window.cursor_position().ok()?;
-    let monitors = window.available_monitors().ok()?;
+fn work_area(window: tauri::WebviewWindow) -> Result<Option<Rect>, ()> {
+    let answer = (|| {
+        let cursor = window.cursor_position().ok()?;
+        let monitors = window.available_monitors().ok()?;
 
-    // The monitor the pointer is over, and the nearest one when no monitor
-    // claims it — a pointer on the seam between two belongs to whichever of them
-    // its coordinates fall inside, and "nearest" is that answer.
-    monitors
-        .iter()
-        .min_by_key(|monitor| distance_to(&cursor, monitor.work_area))
-        .map(|monitor| Rect {
-            x: monitor.work_area.position.x,
-            y: monitor.work_area.position.y,
-            width: monitor.work_area.size.width,
-            height: monitor.work_area.size.height,
+        // The monitor the pointer is over, and the nearest one when no monitor
+        // claims it — a pointer on the seam between two belongs to whichever of
+        // them its coordinates fall inside, and "nearest" is that answer.
+        let nearest = monitors
+            .iter()
+            .min_by_key(|monitor| distance_to(&cursor, &monitor.work_area()))?;
+
+        let area = nearest.work_area();
+
+        Some(Rect {
+            x: area.position.x,
+            y: area.position.y,
+            width: area.size.width,
+            height: area.size.height,
         })
+    })();
+
+    Ok(answer)
 }
 
 /// How far outside this rectangle a point lies. Zero when it is inside.
-fn distance_to(point: &PhysicalPosition<f64>, area: tauri::PhysicalRect<i32, u32>) -> i64 {
+fn distance_to(point: &PhysicalPosition<f64>, area: &tauri::PhysicalRect<i32, u32>) -> i64 {
     let x = point.x - f64::from(area.position.x);
     let y = point.y - f64::from(area.position.y);
 
@@ -148,16 +155,16 @@ fn distance_to(point: &PhysicalPosition<f64>, area: tauri::PhysicalRect<i32, u32
 /// "unknown" is not "where I asked", and reporting the request back would make
 /// the one check that exists report itself.
 #[tauri::command]
-fn place_window(window: tauri::WebviewWindow, x: i32, y: i32) -> Option<Point> {
+fn place_window(window: tauri::WebviewWindow, x: i32, y: i32) -> Result<Option<Point>, ()> {
     if let Err(error) = window.set_position(PhysicalPosition::new(x, y)) {
         report(&format!("the window would not accept a position: {error}"));
-        return None;
+        return Ok(None);
     }
 
-    window.outer_position().ok().map(|position| Point {
+    Ok(window.outer_position().ok().map(|position| Point {
         x: position.x,
         y: position.y,
-    })
+    }))
 }
 
 /// Show or hide the window.

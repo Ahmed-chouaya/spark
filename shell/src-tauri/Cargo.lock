@@ -2889,6 +2889,7 @@ version = "0.1.0"
 dependencies = [
  "interprocess",
  "libc",
+ "serde",
  "tauri",
  "tauri-build",
 ]

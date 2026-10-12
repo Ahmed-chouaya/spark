@@ -51,6 +51,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use interprocess::local_socket::{ListenerNonblockingMode, ListenerOptions};
+use interprocess::local_socket::GenericFilePath;
 use interprocess::local_socket::prelude::*;
 
 /// The environment variable carrying the channel's address.
@@ -120,9 +121,17 @@ where
 
     prepare_address(&address)?;
 
-    let name = address.to_fs_name::<PathBuf>().map_err(|error| {
-        std::io::Error::other(format!("{} is not a channel name: {error}", address.display()))
-    })?;
+    // `GenericFilePath` is the name type that maps to a Unix socket path here
+    // and to `\\.\pipe\…` on Windows, with no transformation either way — which is
+    // the same mapping `src/relay/address.ts` already states, so the address this
+    // was handed is the address the relay will connect to. `into_owned` so the
+    // name no longer borrows the path it was read from.
+    let name = {
+        let path = address.clone();
+        path.to_fs_name::<GenericFilePath>().map_err(|error| {
+            std::io::Error::other(format!("{} is not a channel name: {error}", address.display()))
+        })?
+    };
 
     // Non-blocking accept, so closing is immediate rather than a matter of when
     // the next relay happens to fire. See `POLL`.
@@ -136,10 +145,10 @@ where
     let stop = Arc::new(AtomicBool::new(false));
     let thread_stop = stop.clone();
 
-    std::thread::spawn(move || {
-        pump(listener, thread_stop, on_payload);
-        drop(listener);
-    });
+    // The listener is moved rather than cloned, so the thread owns the socket
+    // entry outright: dropping it there is what reclaims the address, and a
+    // clone held here would keep the file alive after the thread had gone.
+    std::thread::spawn(move || pump(listener, thread_stop, on_payload));
 
     Ok(Channel { stop })
 }
@@ -309,7 +318,7 @@ mod tests {
         // Pinned against the launcher rather than duplicated: `scripts/
         // spark-companion.ts` sets this exact name, and a change on either side
         // has to change both.
-        let launcher = include_str!("../../../../scripts/spark-companion.ts");
+        let launcher = include_str!("../../../scripts/spark-companion.ts");
 
         assert!(
             launcher.contains(ADDRESS_VARIABLE),
@@ -330,8 +339,8 @@ mod tests {
         // Compared rather than duplicated: a second number here would be a
         // second answer to a question `src/relay/channel.ts` already answers,
         // and only one of the two would be tested.
-        let channel = include_str!("../../../../src/relay/channel.ts");
+        let channel = include_str!("../../../src/relay/channel.ts");
 
-        assert!(channel.contains(&format!("1 << {MAX_PAYLOAD_BYTES.ilog2()}")));
+        assert!(channel.contains("MAX_PAYLOAD_BYTES = 1 << 20"));
     }
 }

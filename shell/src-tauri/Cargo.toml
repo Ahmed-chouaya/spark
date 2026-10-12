@@ -13,6 +13,10 @@ tauri-build = { version = "2", features = [] }
 # anything: see `src/main.rs` for what this program is allowed to know.
 tauri = { version = "2", features = [] }
 
+# For the two shapes that cross the IPC boundary: the work area, and where the
+# window ended up. Both are plain data with no interpretation attached.
+serde = { version = "1", features = ["derive"] }
+
 # One cross-platform local-socket API. Unix domain sockets on Unix, named pipes
 # on Windows, one call site — so the platform branch that cannot be run from
 # this machine is the crate's and not ours. `src/relay/channel.ts` reaches the

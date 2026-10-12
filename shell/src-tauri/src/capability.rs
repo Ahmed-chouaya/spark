@@ -279,7 +279,7 @@ mod tests {
         // change to either side has to change both. Compared here rather than
         // trusted, for the same reason `test/relay-address.test.ts` compares two
         // implementations of the address rule.
-        let ts = include_str!("../../../../src/escalation/capability.ts");
+        let ts = include_str!("../../../src/escalation/capability.ts");
 
         assert!(
             ts.contains(&format!("\"{LAYER_SHELL}\"")),
