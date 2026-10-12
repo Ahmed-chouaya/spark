@@ -5,6 +5,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { currentCompanionAddress } from "../src/relay/address";
 import { openChannel, type CompanionChannel } from "../src/relay/channel";
 import { relayBinaryName } from "./support/paths";
+import { dllNames, isWindowsSystemDll, linkedFromLdd } from "./support/imports";
 
 /**
  * The relay, run as the host agent runs it.
@@ -284,25 +285,45 @@ describe("the relay needs nothing on the machine", () => {
   });
 
   it("links nothing that has to be installed", () => {
-    // The property rather than a list of versions: whatever this machine's libc
-    // happens to be called, the only things linked must be the C runtime and
-    // the loader. A language runtime, or anything a package manager put there,
-    // would mean a machine without project dependencies installed could not run
-    // this — which is the whole reason it is a Rust binary and not a script.
-    const ldd = spawnSync("ldd", [BINARY], { encoding: "utf8" });
-    if (ldd.error || ldd.status !== 0) return; // A static build reports nothing.
+    // The property rather than a list of versions: whatever this machine's C
+    // runtime happens to be called, the only things linked must be the ones the
+    // operating system ships. A language runtime, or anything a package manager
+    // put there, would mean a machine without project dependencies installed
+    // could not run this — which is the whole reason it is a Rust binary and
+    // not a script.
+    //
+    // The two platforms answer differently and neither reads like the other, so
+    // each is asked its own question and the shared property is checked
+    // separately. Running `ldd` on Windows produced a zero-length answer that
+    // failed the "did it find anything at all" sanity check, which was the only
+    // reason it was noticed — the underlying property was never being tested
+    // there.
+    const isWindows = process.platform === "win32";
+    const linked = isWindows
+      ? dllNames(readFileSync(BINARY))
+      : linkedFromLdd(BINARY);
 
-    const linked = (ldd.stdout ?? "")
-      .split("\n")
-      // `linux-vdso.so.1` is a mapping the kernel synthesises, not a file on
-      // disk, so it is nothing anybody has to install.
-      .filter((line) => !line.includes("vdso"))
-      .map((line) => line.trim().split(/\s+/)[0] ?? "")
-      .filter((entry) => entry.includes(".so"))
-      .map((entry) => entry.split("/").pop() ?? "")
-      .sort();
+    // A build that links nothing statically needs no checking, and `ldd` says
+    // so rather than answering with an empty list.
+    if (linked === null) return;
 
-    expect(linked.length, "the relay links shared objects at all").toBeGreaterThan(0);
+    expect(
+      linked.length,
+      `the relay links system libraries at all (found: ${linked.join(", ") || "none"})`
+    ).toBeGreaterThan(0);
+
+    if (isWindows) {
+      // A PE imports by name only, so "belongs to Windows" cannot be checked
+      // against a path the way a shared object can. It is checked against what
+      // Windows itself ships, and the failure message names what was found so
+      // an unexpected-but-genuine system DLL is a one-line fix.
+      const foreign = linked.filter((name) => !isWindowsSystemDll(name));
+      expect(
+        foreign,
+        `only Windows system libraries may be imported (all found: ${linked.join(", ")})`
+      ).toEqual([]);
+      return;
+    }
 
     for (const library of linked) {
       // The C library, the compiler support library the C runtime pulls in, and
