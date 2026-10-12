@@ -11,6 +11,7 @@ import { applyPayload } from "../src/state-selection/track";
 import { createClaudeCodeAdapter, type ClaudeCodePayload } from "../src/state-selection/adapters/claude-code";
 import type { AgentAdapter, CanonicalUpdate } from "../src/state-selection/adapters/types";
 import type { AgentSession } from "../src/state-selection/session";
+import { posixPath } from "./support/paths";
 
 /**
  * A session started in a terminal, reaching the companion without being told.
@@ -342,13 +343,13 @@ describe("a second host agent changes nothing here", () => {
           hostVocabulary.some((term) => code.includes(term)) &&
           canonicalVocabulary.some((term) => code.includes(term))
       )
-      .map(({ path }) => path);
+      .map(({ path }) => posixPath(path));
 
     expect(translating).toEqual(["state-selection/adapters/claude-code.ts"]);
 
     // The installer names events to register hooks for and must not learn what
     // any of them means.
-    const installer = sources.find(({ path }) => path === "relay/install.ts")!.code;
+    const installer = sources.find(({ path }) => posixPath(path) === "relay/install.ts")!.code;
     expect(hostVocabulary.some((term) => installer.includes(term))).toBe(true);
     expect(canonicalVocabulary.some((term) => installer.includes(term))).toBe(false);
   });

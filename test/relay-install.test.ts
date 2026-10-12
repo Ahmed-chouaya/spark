@@ -1,6 +1,6 @@
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   HOOK_EVENTS,
@@ -180,9 +180,16 @@ describe("the previous configuration is recoverable", () => {
   it("names the backup for what is in it, beside the file it protects", () => {
     const path = backupPathFor("/home/someone/.claude/settings.json", new Date("2026-10-11T09:00:05Z"));
 
-    expect(path).toBe(
-      "/home/someone/.claude/spark-backups/settings.json.2026-10-11T09-00-05-000Z.bak"
-    );
+    // Built with `join` rather than written as a literal: the rule under test is
+    // *beside the file it protects*, and the separator is the host's. Asserting a
+    // slash-written literal tested the separator, not the rule, and failed on
+    // Windows for a path that was entirely correct.
+    const directory = join("/home/someone/.claude", "spark-backups");
+    const file = "settings.json.2026-10-11T09-00-05-000Z.bak";
+
+    expect(path).toBe(join(directory, file));
+    expect(basename(path)).toBe(file);
+    expect(dirname(path)).toBe(directory);
   });
 
   it("backs up again on a second install that has work to do", async () => {

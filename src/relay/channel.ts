@@ -177,6 +177,18 @@ function readOnePayload(socket: Socket, onPayload: PayloadHandler): void {
  * owned by anyone else is left alone.
  */
 async function ensurePrivateDirectory(address: string): Promise<void> {
+  // Windows: there is no holding directory. A named pipe lives in the
+  // `\\.\pipe` device namespace rather than in the filesystem, so `dirname`
+  // yields the namespace root and everything below would try to create it.
+  //
+  // Nothing is lost by skipping. The barrier this function exists to provide —
+  // "a predictable path must not sit inside a directory another user controls" —
+  // is a filesystem problem with no Windows equivalent, because a pipe is
+  // addressed by name and the namespace is not writable. Per-user reachability
+  // comes from the account name baked into the address (see ./address) and from
+  // the pipe's own ACL.
+  if (process.platform === "win32") return;
+
   const directory = dirname(address);
 
   await mkdir(directory, { recursive: true, mode: DIRECTORY_MODE });

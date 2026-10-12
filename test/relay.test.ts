@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { currentCompanionAddress } from "../src/relay/address";
 import { openChannel, type CompanionChannel } from "../src/relay/channel";
+import { relayBinaryName } from "./support/paths";
 
 /**
  * The relay, run as the host agent runs it.
@@ -24,7 +25,10 @@ import { openChannel, type CompanionChannel } from "../src/relay/channel";
 
 const RELAY_DIR = join(import.meta.dirname, "../relay");
 const RELAY_SOURCE = join(RELAY_DIR, "src/main.rs");
-const BINARY = join(RELAY_DIR, "target/release/spark-relay");
+const BINARY = join(
+  RELAY_DIR,
+  `target/release/${relayBinaryName("spark-relay")}`
+);
 
 beforeAll(() => {
   // Built once for the file. `cargo` is already needed to develop the relay, and

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { posixPath } from "./support/paths";
 
 /**
  * Isolation guards for the escalation surface harness.
@@ -31,7 +32,9 @@ const sourcesIn = (dir: string, pattern: RegExp): Source[] =>
   readdirSync(dir, { recursive: true, encoding: "utf8" })
     .filter((path) => pattern.test(path))
     .map((path) => ({
-      name: relative(REPO_ROOT, join(dir, path)),
+      // Normalised: compared against slash-written literals below, and `relative`
+      // answers with the host's separator.
+      name: posixPath(relative(REPO_ROOT, join(dir, path))),
       path: join(dir, path),
       code: readFileSync(join(dir, path), "utf8"),
     }));

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { posixPath } from "./support/paths";
 
 /**
  * Structural guards.
@@ -24,7 +25,9 @@ const sources = (): { name: string; code: string }[] =>
   readdirSync(MODULE_DIR, { recursive: true, encoding: "utf8" })
     .filter((path) => path.endsWith(".ts"))
     .map((path) => ({
-      name: path,
+      // Normalised: `readdirSync` answers with the host's separator, and the
+      // expectation below is written with forward slashes.
+      name: posixPath(path),
       code: readFileSync(join(MODULE_DIR, path), "utf8"),
     }));
 
