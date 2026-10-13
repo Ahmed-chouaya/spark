@@ -4,7 +4,7 @@ import { createServer, type Server, type Socket } from "node:net";
 import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { askCommand, binaryName, isNativeBinary } from "../src/relay/binary";
-import { currentDecisionAddress } from "../src/relay/address";
+import { currentCompanionAddress, currentDecisionAddress } from "../src/relay/address";
 import { dllNames, foreignImports, installedSystemDlls, linkedFromLdd } from "./support/imports";
 
 /**
@@ -229,6 +229,37 @@ const asking = (overrides: Record<string, unknown> = {}): string =>
   });
 
 /* ------------------------------------------------------------------- tests */
+
+describe("the two halves derive one address", () => {
+  it("the built program reaches the address the TypeScript side derives", async () => {
+    // The cross-language half of the address contract, and the reason
+    // `src/relay/address.ts` and `ask/src/address.rs` are allowed to be two
+    // implementations of one rule: the binary was built by `beforeAll`, this
+    // listener is bound at the address TypeScript derives, and the payload
+    // arrives. If the two halves disagreed the program would connect to nothing,
+    // print nothing, and exit 0 — which looks exactly like working.
+    //
+    // It lives in this file rather than in `test/decision-address.test.ts`
+    // because the derived address is owned by whoever spawns the binary: vitest
+    // runs files in parallel, and two listeners on one path take the socket from
+    // each other rather than sharing it.
+    const arrived = new Promise<Received>((done) => {
+      void companion((request, connection) => {
+        connection.end(answer(request.id, { permissionDecision: "allow" }));
+        done(request);
+      });
+    });
+
+    expect(BINARY).toContain(join("ask", "target", "release"));
+    expect(currentDecisionAddress()).not.toBeNull();
+    expect(currentDecisionAddress()).not.toBe(currentCompanionAddress());
+
+    const run = await ask(asking());
+
+    expect(run.status).toBe(0);
+    expect((await arrived).payload.toString("utf8")).toBe(asking());
+  });
+});
 
 describe("the waiting program announces what the host wrote", () => {
   it("delivers the payload unaltered, under an identifier of its own", async () => {
