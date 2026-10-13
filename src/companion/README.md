@@ -106,9 +106,10 @@ depended on it would fail for reasons that have nothing to do with the relay.
 So on a machine that has the agent installed:
 
 ```
- npm run relay:install -- --yes      # with spark-ask built and askCommand set
- claude                             # ask for something that needs a tool
-                                    # answer the card
+ npm run build                          # spark-ask has to exist before a hook can name it
+ npm run relay:install -- --yes --wait  # install the blocking hook as well as the mascot's
+ claude                                 # ask for something that needs a tool
+                                        # answer the card
 ```
 
 That is the one thing that confirms the host honours a decision rather than merely reading

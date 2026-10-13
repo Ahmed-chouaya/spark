@@ -320,7 +320,8 @@ step("5. what this does not cover");
 process.stdout.write(
   "  A real `claude` run is NOT included, and it is the one thing worth doing by\n" +
     "  hand on a machine that has the agent installed:\n\n" +
-    "      npm run relay:install -- --yes     (with the wait built and askCommand set)\n" +
+    "      npm run build                        (spark-ask must exist first)\n" +
+    "      npm run relay:install -- --yes --wait\n" +
     "      claude                            ask for something needing a tool\n" +
     "      answer the card\n\n" +
     "  That confirms the host honours the decision. Everything above confirms the\n" +

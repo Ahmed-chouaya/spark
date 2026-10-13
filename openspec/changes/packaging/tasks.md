@@ -22,10 +22,10 @@
 
 ## 4. The README
 
-- [ ] 4.1 Write the top-level README: what this is, what it does, how to install, how to run
-- [ ] 4.2 Document how to tell it is working, and how to try each piece on its own — the harness, the capability probe, the relay, the companion, the decision path
-- [ ] 4.3 Document removal in the first screen rather than a footnote, including the host agent's own hooks, because this installs into the user's agent configuration
-- [ ] 4.4 Record which platforms have been measured and which have not, in the table format the other READMEs use, carrying no machine's answer to another machine's row
+- [x] 4.1 Write the top-level README: what this is, what it does, how to install, how to run
+- [x] 4.2 Document how to tell it is working, and how to try each piece on its own — the harness, the capability probe, the relay, the companion, the decision path
+- [x] 4.3 Document removal in the first screen rather than a footnote, including the host agent's own hooks, because this installs into the user's agent configuration
+- [x] 4.4 Record which platforms have been measured and which have not, in the table format the other READMEs use, carrying no machine's answer to another machine's row
 
 ## 5. Verification
 
