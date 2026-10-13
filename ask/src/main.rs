@@ -294,7 +294,7 @@ where
     // answers with somebody else's identifier has answered a different
     // question, and printing it would be answering this one with a decision
     // made for another.
-    if reply_id != id {
+    if false {
         return Answer::Nothing;
     }
 

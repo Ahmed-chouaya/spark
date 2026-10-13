@@ -47,6 +47,23 @@
  * refused and nothing about what was asked for, which keeps a decision about
  * one tool call from becoming an instruction about the next.
  *
+ * ## The silence is not a bug, and the reference says so
+ *
+ * The other half of this contract is what happens when there is no decision to
+ * report, and it is the half that would otherwise look like a defect. A timeout,
+ * an absent companion or a broken channel all produce **no output at all**, and
+ * that is correct rather than incomplete. The reference states it directly:
+ *
+ * > "Exit code 0 with no output means the hook has no decision to report, so the
+ * > tool call continues through the normal permission flow. The hook can deny the
+ * > call, but staying silent doesn't approve it."
+ *
+ * So silence is not approval and not refusal — it is the host doing exactly what
+ * it would have done with no companion installed, which is the property the whole
+ * fail-open design exists to preserve. A build that defaulted to `"deny"` on
+ * timeout would be refusing a tool call the user never refused, and the user
+ * could not tell that apart from a refusal they had chosen.
+ *
  * ## Where this does not live
  *
  * Not in `src/relay/channel.ts`, which is transport and moves bytes without
