@@ -31,6 +31,8 @@
     "shell",
     "test",
     "scripts/relay-install.ts",
+    "scripts/build.ts",
+    "scripts/doctor.ts",
     "vitest.config.ts"
   ]
 }

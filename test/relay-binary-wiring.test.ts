@@ -26,6 +26,7 @@ import { describe, expect, it } from "vitest";
 const CALLERS = [
   "scripts/relay-install.ts",
   "scripts/relay-integration.ts",
+  "scripts/build.ts",
   "test/relay.test.ts",
 ];
 
@@ -83,11 +84,23 @@ describe("only one place knows where the relay is built", () => {
       // third file is how a script comes to disagree with the installer about
       // what a binary is called on Windows.
       //
+      // The owner grew a second answer when the programs started being installed
+      // rather than only built (`packaging`): where an *installed* companion looks
+      // for them, relative to its own executable. A caller that resolved that
+      // itself would be making the same class of mistake on the question that
+      // matters more, so it is named here too.
+      //
       // `relay-binary.test.ts` and `decision-integration.ts` are allowed to name
       // it: the first is the owner's own test, the second is a check that has to
       // say which binary it is running.
       const resolvesIt =
-        body.includes("target/release") || body.includes("relayCommand(");
+        body.includes("target/release") ||
+        body.includes("relayCommand(") ||
+        body.includes("askCommand(") ||
+        body.includes("shellCommand(") ||
+        body.includes("programsBeside(") ||
+        body.includes("installedPrograms(") ||
+        body.includes("findInstalledPrograms(");
       if (!resolvesIt) continue;
 
       expect(
@@ -119,6 +132,16 @@ describe("only one place knows where the relay is built", () => {
         body.includes("relay/binary.ts"),
         `${file} does not get the relay's path from ${OWNER}`
       ).toBe(true);
+    }
+  });
+
+  it("has the owner keep both answers, a build one and an installed one", () => {
+    // The second answer is the one a hook actually carries. Without it in the
+    // owner, the "fix" for a second copy would be a third module, which is the
+    // outcome this module exists to prevent.
+    const owner = code(sourceOf(OWNER));
+    for (const answer of ["programsBeside", "installedPrograms", "findInstalledPrograms"]) {
+      expect(owner, `the owner no longer answers ${answer}`).toContain(answer);
     }
   });
 

@@ -21,6 +21,16 @@
  * one fact that was got wrong twice, and a second copy of the fact is how it
  * gets got wrong a third time, on a machine that has not happened yet.
  *
+ * ## Where an *installed* copy looks, which is a second answer rather than a second rule
+ *
+ * `relayCommand` answers for a checkout, and a checkout is a developer's working
+ * directory: a user who cloned it and deleted it should get a clear error, not a
+ * hook that silently fails per event. So an installed companion resolves the same
+ * two programs against its own executable, and this module owns that answer too —
+ * `programsBeside`, `installedPrograms`, `findInstalledPrograms`. The naming rule
+ * is shared between the two answers, so an installation cannot come to disagree
+ * with a build about what cargo calls a Windows binary.
+ *
  * ## The two questions
  *
  * *Which file* is a build-layout fact that differs by platform. *Whether it is a
@@ -30,7 +40,8 @@
  * not the developer's shell and is not guaranteed to be anything.
  */
 
-import { dirname, resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -69,6 +80,18 @@ const CRATE = (crate: string, binary: string): string =>
   );
 
 /**
+ * The bare names cargo is asked to produce, before this platform's spelling.
+ *
+ * Carried as data rather than written into each call site because the build has
+ * to say what it is about to copy, and a caller that spelled one out would be
+ * spelling out the same fact a third time — which is the whole reason this module
+ * exists.
+ */
+const RELAY_BASE = "spark-relay";
+const ASK_BASE = "spark-ask";
+const SHELL_BASE = "spark-shell";
+
+/**
  * The relay, as the host agent will invoke it.
  *
  * Absolute, because a hook runs in whatever directory the session started from.
@@ -86,7 +109,7 @@ const CRATE = (crate: string, binary: string): string =>
  * being written on Linux.
  */
 export function relayCommand(platform: NodeJS.Platform = process.platform): string {
-  return CRATE("relay", binaryName("spark-relay", platform));
+  return CRATE("relay", binaryName(RELAY_BASE, platform));
 }
 
 /**
@@ -98,7 +121,196 @@ export function relayCommand(platform: NodeJS.Platform = process.platform): stri
  * takes a platform parameter for the same reason `relayCommand` does.
  */
 export function askCommand(platform: NodeJS.Platform = process.platform): string {
-  return CRATE("ask", binaryName("spark-ask", platform));
+  return CRATE("ask", binaryName(ASK_BASE, platform));
+}
+
+/**
+ * The companion's own executable, as the build leaves it.
+ *
+ * A third program in the same place because the build and the doctor both have to
+ * name it: the build copies the other two next to it, and the doctor's question
+ * "are the hooks pointing at *this* install?" is answered by resolving them
+ * against it. Not a hook command, so it has no place in `PlanOptions` — nothing
+ * spawns it — but it is a built binary at a build location, which is what this
+ * module owns.
+ */
+export function shellCommand(platform: NodeJS.Platform = process.platform): string {
+  return CRATE("shell/src-tauri", binaryName(SHELL_BASE, platform));
+}
+
+/* ------------------------------------------------------ installed, not built */
+
+/**
+ * The two programs as an installed companion spells them.
+ *
+ * A pair rather than one string because they are always both needed and always
+ * installed together, and a caller that wanted only one would otherwise write the
+ * directory rule again in order to get it.
+ */
+export interface InstalledPrograms {
+  /** The relay, absolute, as the host agent will invoke it. */
+  readonly relay: string;
+  /** The waiting program, absolute, as the host agent will invoke it. */
+  readonly ask: string;
+}
+
+/**
+ * The directory a platform bundle installs a resource into, beside the executable.
+ *
+ * Named here rather than in the caller because it is Tauri answering, not this
+ * project: a packaged build keeps its extra files in `resources/`, while a
+ * directory somebody copied keeps them beside the program. Written down once, so
+ * "where does an installed copy look" has one answer rather than one per caller
+ * that had to guess.
+ */
+const RESOURCES_DIRECTORY = "resources";
+
+/**
+ * The programs as they sit in a given directory.
+ *
+ * A directory rather than an executable, because "beside the window" is derived
+ * from one (`programsBeside`) and "inside the bundle's resources" is not — and
+ * making the primitive the directory is what stops the second being computed by
+ * passing `.../resources` where an executable belongs, which silently resolves to
+ * the parent and looks for the files in the wrong place.
+ *
+ * **Resolved relative to the installation rather than to a checkout**, and that
+ * is the whole of the claim. A path into a source tree stops being true the day
+ * somebody deletes the clone, and a hook pointing at it then fails once per event
+ * for the rest of their time with the agent — silently, because a hook that
+ * fails looks exactly like an agent with nothing to report. Resolving against the
+ * installation means the answer travels with the files, so moving the
+ * installation moves the answer with it.
+ *
+ * A function of a path rather than a constant, for the reason `relayCommand` is:
+ * the platform is a parameter so both platforms' answers are assertable from a
+ * machine that is only ever one of them.
+ */
+export function programsIn(
+  directory: string,
+  platform: NodeJS.Platform = process.platform
+): InstalledPrograms {
+  return {
+    relay: join(directory, binaryName(RELAY_BASE, platform)),
+    ask: join(directory, binaryName(ASK_BASE, platform)),
+  };
+}
+
+/** The programs as they sit beside a given executable. */
+export function programsBeside(
+  executable: string,
+  platform: NodeJS.Platform = process.platform
+): InstalledPrograms {
+  return programsIn(dirname(executable), platform);
+}
+
+/**
+ * Every place an installed copy looks for its programs, in the order it looks.
+ *
+ * First beside the executable, which is where `npm run build` puts them and where
+ * they are on a machine that was handed a directory. Then the `resources`
+ * directory a packaged install keeps them in, because that is a different layout
+ * from a directory somebody copied — and a resolver that knew only the first
+ * would report a working installation as a broken one, which is the one failure
+ * mode a diagnostic must not have.
+ *
+ * Both are returned rather than the first that happens to exist, because a caller
+ * has to be able to say *where it looked*, and that is most of what a report is.
+ */
+export function installedPrograms(
+  executable: string,
+  platform: NodeJS.Platform = process.platform
+): InstalledPrograms[] {
+  return [
+    programsBeside(executable, platform),
+    programsIn(join(dirname(executable), RESOURCES_DIRECTORY), platform),
+  ];
+}
+
+/** What looking for an installed companion's programs found, and where it looked. */
+export interface InstalledSearch {
+  /** The programs, once found. `null` when no candidate directory had both. */
+  readonly found: InstalledPrograms | null;
+  /** Every directory searched, in order, whether or not anything was in it. */
+  readonly searched: readonly string[];
+}
+
+/** Whether this machine has a file at a path. Injected so a lookup is testable. */
+const existsOnDisk = (path: string): boolean => existsSync(path);
+
+/**
+ * Which answer a script should use, and where it came from.
+ *
+ * `source` is not decoration. A hook written against one answer and checked
+ * against the other is the exact disagreement `test/relay-binary-wiring.test.ts`
+ * exists to prevent, and a caller that cannot say which answer it used cannot
+ * notice that it changed.
+ */
+export interface ResolvedPrograms {
+  /** The two programs, absolute, as the host agent should be told to invoke them. */
+  readonly programs: InstalledPrograms;
+  /** Whether these are the installed ones or the ones a build just produced. */
+  readonly source: "installed" | "build";
+  /** Every directory looked in, in order. Empty when the build answered directly. */
+  readonly searched: readonly string[];
+}
+
+/**
+ * The programs a hook should name.
+ *
+ * **An installation wins over a build**, and the reason is what a hook carries:
+ * an absolute path. A path into a source checkout keeps working only while the
+ * user leaves that checkout exactly where it is, and it fails silently when they
+ * do not — once per event, with nothing in the agent's output to say why. A path
+ * beside an installed executable travels with the files it names.
+ *
+ * The fallback is not a second policy, it is the only thing a developer needs:
+ * someone who has run `cargo build` but not `npm run build` still has a working
+ * pair of programs, and refusing to install hooks for them would make the one
+ * command that works before a full build be the one that says no. The report says
+ * which answer was used, so "it installed the wrong one" is answerable without
+ * reading this.
+ */
+export function resolvePrograms(
+  shell: string = shellCommand(),
+  exists: (path: string) => boolean = existsOnDisk,
+  platform: NodeJS.Platform = process.platform
+): ResolvedPrograms {
+  const search = findInstalledPrograms(shell, exists, platform);
+
+  if (search.found) {
+    return { programs: search.found, source: "installed", searched: search.searched };
+  }
+
+  return {
+    programs: { relay: relayCommand(platform), ask: askCommand(platform) },
+    source: "build",
+    searched: search.searched,
+  };
+}
+
+/**
+ * Look for an installed companion's programs, and report where it looked.
+ *
+ * Pure over an injected `exists`, so it can be asked about a directory that does
+ * not exist on this machine — which is the only way to check the half of this
+ * that is about a layout nobody has here.
+ */
+export function findInstalledPrograms(
+  executable: string,
+  exists: (path: string) => boolean = existsOnDisk,
+  platform: NodeJS.Platform = process.platform
+): InstalledSearch {
+  const searched: string[] = [];
+
+  for (const candidate of installedPrograms(executable, platform)) {
+    searched.push(dirname(candidate.relay));
+    if (exists(candidate.relay) && exists(candidate.ask)) {
+      return { found: candidate, searched };
+    }
+  }
+
+  return { found: null, searched };
 }
 
 /**

@@ -2,10 +2,10 @@
 
 ## 1. The build
 
-- [ ] 1.1 Add `npm run build` that builds `relay`, then `ask`, then the shell bundle, in that order, and verify the order is a dependency rather than a convention
-- [ ] 1.2 Make the build name the thing that failed rather than printing cargo's output and stopping, and verify a failing step names itself
-- [ ] 1.3 Copy both Rust programs next to the built shell, and verify the installer resolves them relative to the installed executable rather than to a path inside a source checkout
-- [ ] 1.4 Resolve the installed path through `src/relay/binary.ts` rather than a new hardcoded path, so the `.exe` rule is not solved a second time
+- [x] 1.1 Add `npm run build` that builds `relay`, then `ask`, then the shell bundle, in that order, and verify the order is a dependency rather than a convention
+- [x] 1.2 Make the build name the thing that failed rather than printing cargo's output and stopping, and verify a failing step names itself
+- [x] 1.3 Copy both Rust programs next to the built shell, and verify the installer resolves them relative to the installed executable rather than to a path inside a source checkout
+- [x] 1.4 Resolve the installed path through `src/relay/binary.ts` rather than a new hardcoded path, so the `.exe` rule is not solved a second time
 
 ## 2. Icons and bundle
 

@@ -226,9 +226,31 @@ describe("the shell consumes the existing modules and changes none of them", () 
   });
 
   it("names the shell nowhere in them, in prose or in a string", () => {
+    // One exception, and it is a file rather than a directory because a directory
+    // would have been an exemption nobody reads.
+    //
+    // `src/relay/binary.ts` is the one place allowed to say where a built binary
+    // is, and `packaging` made the companion's own executable one of them: a hook
+    // is an absolute path, and an installation has to name the files that sit
+    // beside the window it shipped with. That is a fact about where a build puts
+    // its output — nothing in `src/relay` branches on the window existing, and
+    // taking the window away would not change a line of it.
+    //
+    // Narrower than it looks. Two things stay forbidden *everywhere*, in this
+    // file included: the host window's seam, and the window's own source
+    // directory. Those are the two that would let an upstream module know the
+    // window is there and reach for it. `shell/src-tauri` is the companion
+    // *crate's* build output, which is a path and not a seam.
+    const MAY_NAME_THE_EXECUTABLE = join(REPO_ROOT, "src/relay/binary.ts");
+    const FORBIDDEN_EVERYWHERE = /__SPARK_HOST_WINDOW__|shell\/src\//;
+
     for (const dir of CONSUMED) {
       for (const source of sourcesIn(dir)) {
-        expect(code(source.code), source.name).not.toMatch(/__SPARK_HOST_WINDOW__|spark-shell|shell\/src/);
+        const body = code(source.code);
+        expect(body, source.name).not.toMatch(FORBIDDEN_EVERYWHERE);
+
+        if (source.path === MAY_NAME_THE_EXECUTABLE) continue;
+        expect(body, `${source.name} names the shell's executable`).not.toMatch(/spark-shell/);
       }
     }
   });
