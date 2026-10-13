@@ -43,5 +43,5 @@
 ## 6. Verification and record
 
 - [x] 6.1 Write `scripts/decision-integration.ts` — a real `ask` binary, a real channel, a real companion, asserting the host's decision bytes end to end, and reporting rather than asserting the model's exit status
-- [ ] 6.2 Record in the README which failure paths were measured and which were reasoned about, including that a real Claude Code run is unverified until someone runs it
+- [x] 6.2 Record in the README which failure paths were measured and which were reasoned about, including that a real Claude Code run is unverified until someone runs it
 - [x] 6.3 Run the full suite and record the count, and confirm the relay's own tests are unchanged from before this change
