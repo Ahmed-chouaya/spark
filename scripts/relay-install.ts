@@ -69,17 +69,36 @@ and 'uninstall-wait' leaves the mascot alone.
 `;
 
 async function main(argv: string[]): Promise<number> {
-  const [command, ...flags] = argv;
+  // Flags and command are found separately, in either order.
+  //
+  // `npm run relay:install -- --dry-run` hands this program `--dry-run` and
+  // nothing else: npm eats the first `--`, so there is no `install` word in
+  // `argv` to read. Taking the first argument as the command and the rest as
+  // flags made the form the README, this file's own usage text and every other
+  // document in the repository tell people to type print `Unknown command:
+  // --dry-run` and do nothing — silently, because it exits 0 on a usage error.
+  //
+  // So: the first argument that is not a flag is the command, and a run with only
+  // flags is an install. Both spellings work, and neither one is a trap.
+  const command = argv.find((argument) => !argument.startsWith("-"));
+  const flags = argv.filter((argument) => argument.startsWith("-"));
   const yes = flags.includes("--yes");
   const dryRun = flags.includes("--dry-run");
   const wait = flags.includes("--wait");
 
-  if (!command || command === "--help" || command === "-h") {
+  // `--help` asks for the usage. Checked before the switch, because a bare
+  // `--help` has no command word in it and would otherwise be read as an install.
+  if (flags.includes("--help") || flags.includes("-h")) {
     process.stdout.write(USAGE);
     return 0;
   }
 
-  switch (command) {
+  // **No arguments at all is an install**, because that is what
+  // `npm run relay:install` means: npm passes nothing through when a person
+  // types it with no flags, so reading "no command" as "show the usage" made the
+  // one form every document in this repository gives print a help screen instead
+  // of asking. Getting usage is `--help`, which is what it is for.
+  switch (command ?? "install") {
     case "events":
       for (const event of HOOK_EVENTS) process.stdout.write(`${event}\n`);
       return 0;

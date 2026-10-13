@@ -268,7 +268,7 @@ row.**
 ## The suite
 
 ```
-npm run verify     # typecheck plus 659 tests
+npm run verify     # typecheck plus 672 tests
 npm run test:e2e   # the rendered surface, driven through a real browser (32)
 ```
 

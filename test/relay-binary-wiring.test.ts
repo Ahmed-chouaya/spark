@@ -37,14 +37,20 @@ const OWNER = "src/relay/binary.ts";
 /**
  * Files allowed to name a build path without being callers of the owner.
  *
- * The owner's own test, and the decision check — which has to say which binary it
+ * The owner's own test, the decision check — which has to say which binary it
  * is running in order to run it at all, and gets its *name* from the owner's rule
- * rather than by spelling one out.
+ * rather than by spelling one out — and the command-level installer test, which
+ * has to say which paths it expects the installer to have written into the
+ * settings before it can check that it wrote them.
  *
  * Listed rather than exempted by pattern, so a third script that grew its own
  * path would have to be added here deliberately, by somebody reading why.
  */
-const ALLOWED = ["test/relay-binary.test.ts", "scripts/decision-integration.ts"];
+const ALLOWED = [
+  "test/relay-binary.test.ts",
+  "scripts/decision-integration.ts",
+  "test/relay-install-command.test.ts",
+];
 
 const sourceOf = (relative: string): string =>
   readFileSync(join(import.meta.dirname, "..", relative), "utf8");
