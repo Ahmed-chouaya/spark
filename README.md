@@ -41,6 +41,13 @@ Neither restores a backup. Restoring would throw away anything you have edited
 since installing. The copy taken before the first install is kept at
 `~/.claude/spark-backups/` and is yours to delete whenever you like.
 
+**Uninstalling matches the hooks by the path they name.** If you installed from
+one directory and then moved it, the removal commands look in the new place, find
+nothing, and say `The companion's hooks were not installed. Nothing was changed.`
+In that case the entries are still in `~/.claude/settings.json` under their old
+paths; delete them by hand, or run `npm run doctor` first to see exactly which
+paths they name.
+
 Nothing else on your machine is touched. `npm run build` writes only inside this
 checkout; `npm run doctor` writes nothing at all.
 
