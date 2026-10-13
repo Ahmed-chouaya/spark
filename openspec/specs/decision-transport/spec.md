@@ -1,12 +1,11 @@
-# Spec Delta
+# decision-transport Specification
 
 ## Purpose
-
 The blocking half of the approval round trip: how a pending request reaches the companion,
 how long the host waits for an answer, what the host is told when there is none, and the
 invariant that governs every path through the wait.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: A request is announced and then awaited
 
@@ -141,31 +140,3 @@ path as every other hook, and SHALL be removable independently.
 
 - **WHEN** the companion is started
 - **THEN** no hook is installed as a side effect of starting
-
-## MODIFIED Requirements
-
-### Requirement: The relay never blocks the host
-
-The relay SHALL NOT wait for the companion to acknowledge a delivery, and SHALL NOT wait for
-any response. It SHALL exit once the payload has been delivered.
-
-This guarantee belongs to the relay program specifically. Where a second program is
-installed as a hook in order to carry a decision back, that program is the one that waits,
-and the guarantee this requirement states is not extended to it — it is stated separately,
-in the capability that governs the wait, so that weakening it is a visible act rather than
-a drift.
-
-#### Scenario: Companion is slow
-
-- **WHEN** the companion takes a long time to read what was delivered
-- **THEN** the relay does not wait for it
-
-#### Scenario: Relay waits for nothing
-
-- **WHEN** the relay has delivered a payload
-- **THEN** it exits without waiting for a reply, an acknowledgement, or a timeout
-
-#### Scenario: The relay is unchanged by a second program existing
-
-- **WHEN** a second program is installed as a hook alongside the relay
-- **THEN** the relay's own behaviour and its own sources are unaffected, and the relay still exits without waiting

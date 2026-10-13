@@ -2,7 +2,6 @@
 
 ## MODIFIED Requirements
 
-
 ### Requirement: The blocked state is surfaced
 
 When a session becomes blocked, the escalation surface SHALL become visible. It SHALL NOT

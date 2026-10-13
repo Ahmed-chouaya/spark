@@ -2,7 +2,6 @@
 
 ## MODIFIED Requirements
 
-
 ### Requirement: The relay never blocks the host
 
 The relay SHALL NOT wait for the companion to acknowledge a delivery, and SHALL NOT wait for
