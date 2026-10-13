@@ -263,6 +263,34 @@ fn main() {
             let published =
                 capability::initialization_script(&capability::capability_report(&window));
 
+            // What this host decided, said out loud.
+            //
+            // A window that is *supposed* to be absent and a window that is
+            // broken look identical from the outside: nothing on screen, nothing
+            // on stderr. That is the state this project found itself in more than
+            // once — `npm run doctor` can report everything, but it cannot tell
+            // somebody staring at an empty desktop whether the companion is
+            // working correctly or failing silently, because on a platform that
+            // cannot float, "working correctly" *is* an empty desktop.
+            //
+            // So the startup line names both halves: the question that was asked
+            // and the answer that came back. Everything after this is an
+            // explanation for what that answer means, and the answer is the whole
+            // of it.
+            {
+                let report_value = capability::capability_report(&window);
+                report(&format!(
+                    "floating surface: asked {:?}, platform answered held={} -> {}",
+                    report_value.placement,
+                    report_value.held,
+                    if report_value.held {
+                        "visible whenever nothing is blocked"
+                    } else {
+                        "visible only while something is blocked"
+                    }
+                ));
+            }
+
             // Step three: the webview, carrying that answer as an initialisation
             // script so it is in the document before any of the page's own
             // JavaScript runs. `add_child` runs inline on the main thread, so
