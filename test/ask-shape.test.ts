@@ -397,11 +397,26 @@ describe("the relay is untouched by a second program existing", () => {
     // Two programs, two sockets. A single listener would have had to guess which
     // of the two it was talking to by looking at the bytes, and a listener that
     // guesses is the failure `relay/` was created to avoid.
-    const relay = code(readFileSync(join(import.meta.dirname, "../relay/src/address.rs"), "utf8"));
-    const ask = code(readFileSync(join(import.meta.dirname, "../ask/src/address.rs"), "utf8"));
+    //
+    // Read from the derivation rather than from the file. `ask/src/address.rs`
+    // carries a `#[cfg(test)]` module that asserts the same string, and a guard
+    // satisfied by a test's own assertion is satisfied by that test being wrong
+    // — which is exactly how this one was found: it held while the address it
+    // was guarding had been pointed at the relay's socket.
+    const derivation = (path: string): string => {
+      const body = code(readFileSync(join(import.meta.dirname, path), "utf8"));
+      return body.slice(0, body.indexOf("#[cfg(test)]"));
+    };
+
+    const relay = derivation("../relay/src/address.rs");
+    const ask = derivation("../ask/src/address.rs");
 
     expect(relay).toContain("companion.sock");
     expect(ask).toContain("decisions.sock");
+    // Both directions, so the pair above is a statement about which socket each
+    // program reaches rather than about both spellings appearing somewhere.
+    expect(ask).not.toContain("companion.sock");
+    expect(relay).not.toContain("decisions.sock");
   });
 });
 

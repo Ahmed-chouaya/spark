@@ -45,9 +45,14 @@ import { unifiedDiff } from "./diff.ts";
  * process spawn per event for nothing.
  *
  * Every one of these is non-blocking by construction: the relay returns nothing
- * and decides nothing, so it cannot hold the host's operation open. Blocking
- * hooks are a different change with a different name, and a hook that has to
- * wait for a response is exactly the branch this design removes.
+ * and decides nothing, so it cannot hold the host's operation open.
+ *
+ * The one exception is `PreToolUse`, which is here **and** in
+ * `BLOCKING_HOOK_EVENTS`. It appears in both because the two programs are
+ * installed for the same event and deliberately live in different matcher groups:
+ * the relay announces the tool call, and the waiting program asks the user about
+ * it. Merging them into one handler would mean one program doing two jobs, and
+ * the program that waits would be started for events it has nothing to ask about.
  */
 export const HOOK_EVENTS = [
   "SessionStart",
@@ -60,6 +65,23 @@ export const HOOK_EVENTS = [
 ] as const;
 
 export type HookEvent = (typeof HOOK_EVENTS)[number];
+
+/**
+ * The events the *waiting* program is installed for.
+ *
+ * Exactly one, and it is the only event where the host has asked a question this
+ * companion can answer. The host fires `PreToolUse` before every tool call, and a
+ * user who has approved everything by hand does not need a mascot asking about
+ * each one — so the waiting hook is installed on its own, and can be removed on
+ * its own, without losing the mascot.
+ *
+ * A user who wants the mascot without the wait should be able to have exactly
+ * that. Asking them to also give up the companion would be the wrong trade, and it
+ * is the trade a single merged hook would force on them.
+ */
+export const BLOCKING_HOOK_EVENTS = ["PreToolUse"] as const;
+
+export type BlockingHookEvent = (typeof BLOCKING_HOOK_EVENTS)[number];
 
 /** The one shape of handler this module writes or removes. */
 const RELAY_HANDLER = "command";
@@ -94,6 +116,14 @@ export interface PlanOptions {
   readonly settingsPath?: string;
   /** The relay executable, as the host will invoke it. */
   readonly relayCommand: string;
+  /**
+   * The waiting executable, as the host will invoke it.
+   *
+   * Optional, and omitting it installs no waiting hook — which is what a caller
+   * that has not built or does not want the wait should do. Present, it adds one
+   * hook on one event, in its own matcher group, removable on its own.
+   */
+  readonly askCommand?: string;
   /** What the settings file holds now; `""` when it does not exist yet. */
   readonly current: string;
 }
@@ -113,6 +143,10 @@ export interface HookPlan {
   readonly unchanged: readonly HookEvent[];
   /** Hooks already in the file that the companion did not add, by event. */
   readonly preserved: Readonly<Record<string, number>>;
+  /** Events that would gain the *waiting* hook. Empty unless it was asked for. */
+  readonly addedBlocking: readonly BlockingHookEvent[];
+  /** Events that already have the waiting hook, and so would gain nothing. */
+  readonly unchangedBlocking: readonly BlockingHookEvent[];
   /** The proposed change, as a diff to show before anything is written. */
   readonly diff: string;
 }
@@ -128,6 +162,7 @@ export function planHooks({
   settingsPath = USER_SETTINGS_PATH,
   relayCommand,
   current,
+  askCommand,
 }: PlanOptions): HookPlan {
   const settings = parse(current, settingsPath);
   const hooks = { ...(settings.hooks ?? {}) };
@@ -135,6 +170,8 @@ export function planHooks({
   const added: HookEvent[] = [];
   const unchanged: HookEvent[] = [];
   const preserved: Record<string, number> = {};
+  const addedBlocking: BlockingHookEvent[] = [];
+  const unchangedBlocking: BlockingHookEvent[] = [];
 
   for (const event of HOOK_EVENTS) {
     const groups = asGroups(hooks[event]);
@@ -157,6 +194,38 @@ export function planHooks({
     added.push(event);
   }
 
+  // The waiting program, and only where it was asked for.
+  //
+  // Without `askCommand` this loop does nothing at all, which is what makes the
+  // non-blocking install usable on its own: a caller that knows nothing about
+  // waiting produces the file it produced before this change existed, byte for
+  // byte. That is also what `test/relay-install.test.ts` pins, and it is the
+  // reason the option is optional rather than required — requiring it would make
+  // every existing caller change for a program that may not be installed.
+  if (askCommand !== undefined) {
+    for (const event of BLOCKING_HOOK_EVENTS) {
+      const groups = asGroups(hooks[event]);
+
+      // Counted against the relay rather than the asker, so a user who already
+      // has the non-blocking hook installed is not told their configuration was
+      // rewritten: the waiting group is an addition to the same event, and the
+      // handlers already there are still there.
+      preserved[event] = countForeign(groups, askCommand);
+
+      if (countOwn(groups, askCommand) > 0) {
+        unchangedBlocking.push(event);
+        continue;
+      }
+
+      // A separate matcher group rather than the same one, so removing the wait
+      // removes exactly the group that runs the waiting program and leaves the
+      // group running the relay in place. One group holding both would make the
+      // two inseparable in the one place a user can act on them.
+      hooks[event] = [...groups, ownGroup(askCommand)];
+      addedBlocking.push(event);
+    }
+  }
+
   const proposed = changed(settings, hooks)
     ? serialise({ ...settings, hooks })
     : current;
@@ -169,6 +238,8 @@ export function planHooks({
     added,
     unchanged,
     preserved,
+    addedBlocking,
+    unchangedBlocking,
     diff: unifiedDiff(current, proposed, settingsPath),
   };
 }
@@ -178,6 +249,14 @@ export interface InstallOptions {
   readonly settingsPath?: string;
   /** The relay executable, as the host will invoke it. */
   readonly relayCommand: string;
+  /**
+   * The waiting executable, as the host will invoke it.
+   *
+   * Omitted, and no waiting hook is installed. Present, and one is added on one
+   * event in its own matcher group, which `uninstallHooks` can take back out
+   * without touching the non-blocking hooks.
+   */
+  readonly askCommand?: string;
   /**
    * The user has seen the diff and agreed to it.
    *
@@ -218,11 +297,12 @@ export type InstallResult =
 export async function installHooks({
   settingsPath = USER_SETTINGS_PATH,
   relayCommand,
+  askCommand,
   confirmed,
   now = () => new Date(),
 }: InstallOptions): Promise<InstallResult> {
   const current = await readIfPresent(settingsPath);
-  const plan = planHooks({ settingsPath, relayCommand, current });
+  const plan = planHooks({ settingsPath, relayCommand, askCommand, current });
 
   if (!confirmed) {
     return { applied: false, plan, reason: "not-confirmed", backupPath: null };
@@ -271,13 +351,55 @@ export async function uninstallHooks({
   readonly settingsPath?: string;
   readonly relayCommand: string;
 }): Promise<UninstallResult> {
+  return removeCommands({ settingsPath }, [relayCommand]);
+}
+
+/**
+ * Take out only the waiting hook, leaving every non-blocking hook in place.
+ *
+ * A separate function rather than a flag on `uninstallHooks`, and the reason is
+ * that "remove the wait" and "remove everything" are different things a user can
+ * mean. One of them is somebody who has finished using this and wants their
+ * configuration back exactly as it was; the other is somebody who liked the
+ * mascot and found the wait not for them. Overloading one function with an
+ * optional command makes the second mean the first whenever it is called with
+ * both, which is precisely the call `relay:uninstall` makes.
+ *
+ * Named after what it removes rather than taking a boolean, so the call site says
+ * which of the two things it means.
+ */
+export async function uninstallWait({
+  settingsPath = USER_SETTINGS_PATH,
+  askCommand,
+}: {
+  readonly settingsPath?: string;
+  /** The waiting executable, as it was installed. */
+  readonly askCommand: string;
+}): Promise<UninstallResult> {
+  return removeCommands({ settingsPath }, [askCommand]);
+}
+
+/**
+ * Remove the matcher groups running any of `commands`, and nothing else.
+ *
+ * Shared by the two public removals above, and the reason they can be separate
+ * is that a group is identified by the command it runs: removing "the group
+ * running this program" is exact, where removing "the wait" as a concept would
+ * have to guess which lines belong to it.
+ */
+async function removeCommands(
+  { settingsPath = USER_SETTINGS_PATH }: { readonly settingsPath?: string },
+  commands: readonly string[]
+): Promise<UninstallResult> {
   const before = await readIfPresent(settingsPath);
   const settings = parse(before, settingsPath);
   const hooks = { ...(settings.hooks ?? {}) };
 
   for (const event of HOOK_EVENTS) {
     const groups = asGroups(hooks[event]);
-    const remaining = groups.filter((group) => countOwn([group], relayCommand) === 0);
+    const remaining = groups.filter(
+      (group) => !commands.some((command) => countOwn([group], command) > 0)
+    );
     if (remaining.length === 0) {
       delete hooks[event];
     } else {
