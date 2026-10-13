@@ -32,6 +32,18 @@ const CALLERS = [
 /** The one place allowed to name the built binary's location. */
 const OWNER = "src/relay/binary.ts";
 
+/**
+ * Files allowed to name a build path without being callers of the owner.
+ *
+ * The owner's own test, and the decision check — which has to say which binary it
+ * is running in order to run it at all, and gets its *name* from the owner's rule
+ * rather than by spelling one out.
+ *
+ * Listed rather than exempted by pattern, so a third script that grew its own
+ * path would have to be added here deliberately, by somebody reading why.
+ */
+const ALLOWED = ["test/relay-binary.test.ts", "scripts/decision-integration.ts"];
+
 const sourceOf = (relative: string): string =>
   readFileSync(join(import.meta.dirname, "..", relative), "utf8");
 
@@ -63,15 +75,24 @@ describe("only one place knows where the relay is built", () => {
       const body = code(sourceOf(file));
       // Named by whoever needs the path, which is a narrower signal than "mentions
       // the relay" — a comment or a log line is not a second copy of the answer.
-      // `test/relay-binary.test.ts` is the owner's own test and is allowed to say
-      // both.
+      //
+      // `target/release` catches a build path spelled out anywhere, whichever
+      // crate it belongs to. That is broader than this file was written to be and
+      // it is the right breadth: the rule being protected is that the extension
+      // cargo appends is asked in one place, and a second `target/release` in a
+      // third file is how a script comes to disagree with the installer about
+      // what a binary is called on Windows.
+      //
+      // `relay-binary.test.ts` and `decision-integration.ts` are allowed to name
+      // it: the first is the owner's own test, the second is a check that has to
+      // say which binary it is running.
       const resolvesIt =
         body.includes("target/release") || body.includes("relayCommand(");
       if (!resolvesIt) continue;
 
       expect(
-        [...CALLERS, OWNER, "test/relay-binary.test.ts"].includes(file),
-        `${file} resolves the relay's path but is not listed as a caller`
+        [...CALLERS, OWNER, ...ALLOWED].includes(file),
+        `${file} resolves a built binary's path but is not listed`
       ).toBe(true);
     }
   });
