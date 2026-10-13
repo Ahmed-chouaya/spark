@@ -239,6 +239,12 @@ fn pump<F>(
 ) where
     F: Fn(Vec<u8>),
 {
+    // Readers that have attached and are being fed what the relay brings. Held
+    // for the life of the channel and cleared of anything that has gone away on
+    // the way through, so a watcher that exits does not leave a dead socket
+    // being written to on every payload forever.
+    let mut observers: Vec<LocalSocketStream> = Vec::new();
+
     while !stop.load(Ordering::SeqCst) {
         let connection = match listener.accept() {
             Ok(connection) => connection,
@@ -254,16 +260,114 @@ fn pump<F>(
             }
         };
 
-        read_one(connection, &on_payload);
+        // The first byte says which of two things this is, and the two are told
+        // apart by a handshake rather than by a timeout.
+        //
+        // A reader attaching declares itself and sends nothing else. The relay
+        // never declares anything, so the channel's own protocol is unchanged and
+        // a payload arriving is still a payload arriving. Deciding on a timeout
+        // instead would mean the relay — which runs on somebody's critical path —
+        // waiting for a reader that had gone quiet, and there is no version of
+        // that which is safe.
+        let mut connection = connection;
+        match read_handshake(&mut connection) {
+            Handshake::Observer => {
+                // The whole connection, not a split write half.
+                //
+                // `split()` drops the half that was not kept, and on this stream
+                // type dropping one half closes the socket: the first forward to
+                // an observer failed with a broken pipe against a reader that was
+                // still connected and still waiting. An observer is fed and never
+                // read, and holding the whole connection is what keeps it fed.
+                observers.push(connection);
+                continue;
+            }
+            Handshake::Payload(first) => read_one(connection, first, &on_payload, &mut observers),
+        }
     }
 }
 
+/// What a connecting peer turned out to be.
+enum Handshake {
+    /// A reader attaching: it sent the declared byte and will send nothing more.
+    Observer,
+    /// The relay delivering: the first byte of its payload, already read.
+    Payload(u8),
+}
+
+/// The byte a reader sends to say it is a reader.
+const OBSERVER_DECLARATION: u8 = b'O';
+
+fn read_handshake(connection: &mut LocalSocketStream) -> Handshake {
+    use std::io::Read;
+
+    let mut first = [0u8; 1];
+    match connection.read(&mut first) {
+        Ok(1) if first[0] == OBSERVER_DECLARATION => Handshake::Observer,
+        // Anything else is the relay, and its first byte belongs to its payload.
+        Ok(1) => Handshake::Payload(first[0]),
+        // Closed or empty: nothing to deliver and nothing to read. Treated as an
+        // observer so it is dropped, which costs nothing and is not a failure.
+        _ => Handshake::Observer,
+    }
+}
+
+/// Hand one payload to every attached observer.
+///
+/// The shell owns the address, so an observer cannot read the channel by itself:
+/// this is the one-way channel, and a reader that connects gets nothing until the
+/// companion decides to give it what arrived. Interpreted nowhere — the bytes go
+/// out exactly as they came in, and the observer folds them through the same
+/// adapters the document does, so the two cannot disagree about what they mean.
+fn forward_to_observers(observers: &mut Vec<LocalSocketStream>, payload: &[u8]) {
+    use std::io::Write;
+
+    // Best effort by design, and one failure is not a failure: an observer that
+    // has gone away must not delay or fail the delivery the document needs.
+    // Written back through a new vector rather than removed in place: a
+    // swap-remove would move a live half while the borrow is still open, and the
+    // order of observers means nothing anyway.
+    // Length-prefixed, so a reader knows where one payload ends without the
+    // channel having to close the connection — which it must not, because the
+    // same reader is fed every payload for the life of the channel and closing
+    // would turn each one into a reconnect.
+    //
+    // The framing is the one `read_one_request` already speaks in
+    // `src/relay/channel.ts`, deliberately: a second framing here would be a
+    // second thing for a reader to understand, and this one already has a test
+    // on the other side of the socket.
+    let header = format!("{}\n", payload.len());
+    let mut alive = Vec::with_capacity(observers.len());
+
+    for observer in observers.drain(..) {
+        let mut observer = observer;
+        // Flushed rather than left to the buffer: the reader is waiting on a
+        // connection that stays open, so bytes that never left this process are
+        // bytes that never arrive — and nothing would report it.
+        if observer.write_all(header.as_bytes()).is_ok()
+            && observer.write_all(payload).is_ok()
+            && observer.flush().is_ok()
+        {
+            alive.push(observer);
+        }
+    }
+
+    *observers = alive;
+}
+
 /// Read one payload from one connection, then let it go.
-fn read_one<F>(mut connection: LocalSocketStream, on_payload: &F)
+fn read_one<F>(
+    mut connection: LocalSocketStream,
+    first: u8,
+    on_payload: &F,
+    observers: &mut Vec<LocalSocketStream>,
+)
 where
     F: Fn(Vec<u8>),
 {
-    let mut payload = Vec::new();
+    // Seeded with the byte the handshake already read, so nothing is lost and the
+    // payload is exactly what the relay wrote.
+    let mut payload = vec![first];
     let taken = connection
         .by_ref()
         .take(MAX_PAYLOAD_BYTES as u64 + 1)
@@ -278,6 +382,9 @@ where
         return;
     }
 
+    // The observers see it before the document does, because a reader that has
+    // attached for reporting is waiting and the document is not.
+    forward_to_observers(observers, &payload);
     on_payload(payload);
 }
 

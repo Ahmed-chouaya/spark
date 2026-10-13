@@ -24,12 +24,18 @@
  * host is asked to carry out an answer rather than to produce one.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { canHoldPersistentSurface, readHostWindow } from "../../src/escalation/capability";
 import { useCompanionSurface, usePendingDecisions } from "../../src/escalation/useCompanionSurface";
-import { applyReceivedPayload } from "../../src/relay/session-source";
-import { createClaudeCodeAdapter } from "../../src/state-selection/adapters/claude-code";
+
+import {
+  buildAdapterRegistry,
+  describeSessions,
+  foldAgentPayload,
+  parse,
+  sessionChange,
+} from "./adapters";
 import type { AgentSession } from "../../src/state-selection/session";
 import type { Position, ShellHost } from "./host";
 import { placementFor, positionTookEffect } from "./placement";
@@ -94,27 +100,59 @@ export function useCompanionShell({
   });
 
   /**
-   * One payload, folded in.
+   * One payload, folded in, through whichever adapter owns it.
    *
-   * Through `applyReceivedPayload` and the Claude Code adapter, which is the
-   * pipeline the relay's own tests exercise: bytes, envelope check, the host's
-   * adapter, `applyEvent`, sessions. This file adds no step and interprets
-   * nothing, which is what lets a test claim the fold is the fold's.
+   * `foldAgentPayload` resolves the agent from the payload itself and hands the
+   * event to that agent's adapter, then folds with `applyPayload` — the same
+   * fold, the same `applyEvent`, the same reduction. A second host therefore
+   * costs a registry entry and nothing else, which is the claim
+   * `adapters/types.ts` had been making since the first adapter existed and this
+   * is the first time anything has checked it.
    *
-   * The adapter is built once per shell rather than per payload so the in-flight
-   * tool timings it keeps survive from one hook to the next — which is the state
-   * that makes a `PostToolUse` mean "that tool took this long". The lazy
+   * The registry is built once per shell rather than per payload so the in-flight
+   * tool timings each adapter keeps survive from one event to the next — which is
+   * the state that makes a tool's end mean "that tool took this long". The lazy
    * initialiser is what makes "once" true: `useRef(build())` would *evaluate* the
    * build on every render and throw all but the first away, and a plain module
    * constant would be shared by every shell on the page.
    */
-  const [adapter] = useState(createClaudeCodeAdapter);
+  const [adapters] = useState(buildAdapterRegistry);
   const receive = useCallback(
     (payload: Uint8Array) => {
-      setSessions((current) => applyReceivedPayload(current, adapter, decode(payload)));
+      setSessions((current) => {
+        const folded = foldAgentPayload(current, adapters, parse(decode(payload)));
+        return folded.sessions as readonly AgentSession[];
+      });
     },
-    [adapter, decode]
+    [adapters, decode]
   );
+
+  // What the companion is holding, said out loud.
+  //
+  // On a platform that cannot keep a surface on screen — GNOME, which is what
+  // this was built on — correct behaviour is an empty desktop, and a working
+  // companion is indistinguishable from a broken one by looking at the screen.
+  // So this is how you tell. It writes nothing and decides nothing; it reports
+  // what the reduction already made of the payloads.
+  //
+  // Changed-state only. A companion receiving a tool's per-token events would
+  // otherwise print a line for each one, and the signal would be the noise.
+  const reportedRef = useRef<readonly AgentSession[]>([]);
+  useEffect(() => {
+    const change = sessionChange(reportedRef.current, sessions);
+    reportedRef.current = sessions;
+
+    if (change === null) return;
+    void host.report(change);
+  }, [host, sessions]);
+
+  // The full set, once there is something to show. A session that arrives and
+  // never changes again would otherwise report once and then look like a
+  // companion that had lost it.
+  useEffect(() => {
+    if (sessions.length === 0) return;
+    void host.report(`sessions:\n${describeSessions(sessions)}`);
+  }, [host, sessions.length]);
 
   // The window's visibility is the surface's visibility, asked rather than
   // re-decided. `visibility` comes from `surfaceVisibility` inside

@@ -146,7 +146,10 @@ describe("the report is published before the document's own JavaScript", () => {
 
     expect(main).toMatch(/WindowBuilder::from_config\(app\.handle\(\), &declared\)\?\.build\(\)/);
     expect(main).toMatch(/add_child\(/);
-    expect(main).toMatch(/WebviewBuilder::from_config\(&declared\)/);
+    // `new`, not `from_config` — the latter takes no URL, so a webview built
+    // with it never loads a document and the script never runs at all. See
+    // `test/shell-window.test.ts` for the measurement that found it.
+    expect(main).toMatch(/WebviewBuilder::new\(/);
     expect(main).toMatch(/initialization_script\(published\)/);
     expect(main).not.toMatch(/\.eval\(|eval\(published\)/);
   });

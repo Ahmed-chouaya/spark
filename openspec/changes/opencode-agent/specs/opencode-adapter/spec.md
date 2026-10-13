@@ -50,8 +50,8 @@ agent to expect.
 
 ### Requirement: Only one state escalates across every agent
 
-Where sessions from more than one agent are present, exactly one state escalates, and it
-is the same rule every agent's sessions are subject to.
+Where sessions from more than one agent are present, exactly one state SHALL escalate, and
+it SHALL be decided by the same rule every agent's sessions are subject to.
 
 #### Scenario: One agent blocked, another working
 
@@ -77,8 +77,6 @@ each is in, and what any is waiting on, in a form a person can read while it run
 
 - **WHEN** the platform cannot keep a surface on screen and nothing is blocked
 - **THEN** the report is how a person tells a working companion from a broken one, because an empty desktop is the correct behaviour there and indistinguishable from a fault
-
-## Boundaries
 
 ### Requirement: No decision is answered for a host that was not measured
 

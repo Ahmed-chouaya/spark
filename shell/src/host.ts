@@ -68,6 +68,16 @@ export interface ShellHost {
 
   /** Bring the window forward, so a decision the user must act on is reachable. */
   focus(): Promise<void>;
+
+  /**
+   * Say, on the host's own standard error, what the companion is holding.
+   *
+   * A diagnostic, and it changes nothing. On a platform that cannot keep a
+   * surface on screen the correct behaviour is an empty desktop, so this is the
+   * only thing that distinguishes a working companion from a broken one to
+   * somebody looking at a screen.
+   */
+  report(text: string): Promise<void>;
 }
 
 /** What `absentHost` was asked to do, in the order it was asked. */
@@ -76,6 +86,8 @@ export interface HostCalls {
   readonly placed: readonly Position[];
   readonly visible: readonly boolean[];
   readonly focused: number;
+  /** Everything the document reported, in order. A diagnostic writes nothing. */
+  readonly reported: readonly string[];
 }
 
 /** A host that answers for a plain document, recording what it was asked. */
@@ -103,10 +115,17 @@ export function absentHost(options: {
   const placed: Position[] = [];
   const visible: boolean[] = [];
   let focused = 0;
+  const reported: string[] = [];
 
   return {
     get calls() {
-      return { workArea: workAreaCalls, placed: [...placed], visible: [...visible], focused };
+      return {
+        workArea: workAreaCalls,
+        placed: [...placed],
+        visible: [...visible],
+        focused,
+        reported: [...reported],
+      };
     },
     async workArea() {
       workAreaCalls += 1;
@@ -121,6 +140,9 @@ export function absentHost(options: {
     },
     async focus() {
       focused += 1;
+    },
+    async report(text: string) {
+      reported.push(text);
     },
   };
 }
@@ -155,6 +177,7 @@ export function tauriHost(): ShellHost | null {
     place: (x, y) => api.core.invoke<Position | null>("place_window", { x, y }),
     setVisible: (visible) => api.core.invoke<void>("set_window_visible", { visible }),
     focus: () => api.core.invoke<void>("focus_window"),
+    report: (text) => api.core.invoke<void>("report_sessions", { text }),
   };
 }
 

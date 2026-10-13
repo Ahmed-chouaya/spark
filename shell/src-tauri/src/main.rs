@@ -89,6 +89,15 @@ const COMPANION: &str = "companion";
 /// one cannot be mistaken for it.
 const PAYLOAD: &str = "spark://payload";
 
+/// The document the webview loads.
+///
+/// `index.html` in the built frontend, named here rather than read out of
+/// `tauri.conf.json`, because the window declaration is not what the webview
+/// reads: `WebviewBuilder::from_config` takes no URL at all. The declaration
+/// still records it so the file exists in one place a reader can find, and the
+/// shell builds the webview from this.
+const PAGE: &str = "index.html";
+
 /// How long after start-up the window is asked whether it took the keyboard.
 ///
 /// Long enough that the window has been created, laid out and given a chance to
@@ -200,6 +209,32 @@ fn set_window_visible(window: tauri::WebviewWindow, visible: bool) {
     }
 }
 
+/// Say, on standard error, what the companion is holding.
+///
+/// ## Why this program says anything at all
+///
+/// On a platform that cannot keep a surface above other windows — GNOME, which
+/// is what this was built on — **correct behaviour is an empty desktop**. The
+/// window is created hidden and shown only while something is blocked, so a
+/// working companion and a broken one look identical to somebody sitting in front
+/// of the screen. That is not a defect in the visibility rule; it is the rule.
+///
+/// So the document, which is the only party that knows what the reduction made of
+/// the payloads, reports it here and this program prints it. `npm run companion`
+/// already inherits this program's streams, so it lands in a terminal with
+/// nothing to configure.
+///
+/// The text is passed in rather than computed here on purpose. Which sessions
+/// exist, which agent owns each and what state they are in are questions for the
+/// reduction, and a Rust function answering any of them would be a second
+/// implementation of it — the exact thing `main.rs`'s module note forbids.
+#[tauri::command]
+fn report_sessions(text: String) {
+    for line in text.lines() {
+        report(line);
+    }
+}
+
 /// Bring the window forward so the user can answer it.
 ///
 /// Only ever called for a decision the user has to act on, and only on a
@@ -295,16 +330,34 @@ fn main() {
             // script so it is in the document before any of the page's own
             // JavaScript runs. `add_child` runs inline on the main thread, so
             // this is two steps rather than a deadlock.
-            window.add_child(
-                tauri::webview::WebviewBuilder::from_config(&declared)
-                    .initialization_script(published),
+            // `WebviewBuilder::from_config` reads only `WebviewAttributes` — it
+            // takes no URL. `WebviewBuilder::new` takes the label and a
+            // `WebviewUrl`, and that is the constructor that decides what the
+            // document actually loads.
+            //
+            // So `from_config` alone would attach a webview with no page in it:
+            // the window appears, the channel binds, payloads are received, and
+            // nothing renders and nothing reports, because no JavaScript ever
+            // ran. Found by running the built window — 672 tests pass and not one
+            // of them can tell whether a document loaded.
+            let child = tauri::webview::WebviewBuilder::new(
+                &declared.label,
+                tauri::WebviewUrl::App(PAGE.into()),
+            )
+                .initialization_script(published);
+
+            let attached = window.add_child(
+                child,
                 tauri::LogicalPosition::new(0.0, 0.0),
                 window.inner_size()?,
-            )?;
+            );
+
+            attached?;
 
             let window = app
                 .get_webview_window(COMPANION)
                 .ok_or("the companion window was not created")?;
+
 
             // Not focusable at all until something needs it. `focus: false` stops
             // the window *taking* focus as it appears; this stops the compositor
@@ -372,7 +425,8 @@ fn main() {
             work_area,
             place_window,
             set_window_visible,
-            focus_window
+            focus_window,
+            report_sessions
         ])
         .run(tauri::generate_context!())
         .expect("the shell could not start");

@@ -303,7 +303,11 @@ describe("`npm run companion` is the app", () => {
     const runtime = code(readFileSync(join(SHELL_SRC, "src/companion.tsx"), "utf8"));
 
     expect(runtime).toMatch(/\buseCompanionSurface\b/);
-    expect(runtime).toMatch(/applyReceivedPayload/);
+    // Through whichever adapter owns the payload. `foldAgentPayload` resolves
+    // the agent from the payload and hands the event to that agent's adapter,
+    // then folds with `applyPayload` — the function `applyReceivedPayload` calls,
+    // so a second host agent costs a registry entry and no change to the fold.
+    expect(runtime).toMatch(/foldAgentPayload/);
     expect(runtime).toMatch(/latest\.surface|<>\{.*surface\.*\}?<\/>/);
   });
 

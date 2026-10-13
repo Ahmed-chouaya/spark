@@ -169,7 +169,20 @@ describe("the window is built from the declaration rather than beside it", () =>
     expect(theWindow().create).toBe(false);
     expect(mainCode()).toMatch(/WindowBuilder::from_config/);
     expect(mainCode()).toMatch(/add_child\(/);
-    expect(mainCode()).toMatch(/WebviewBuilder::from_config/);
+
+    // `WebviewBuilder::new(label, url)`, **not** `WebviewBuilder::from_config`.
+    //
+    // `from_config` reads only `WebviewAttributes` — it takes no URL at all. So
+    // a webview built with it has no page in it: the window appears, the channel
+    // binds, payloads are received, and nothing renders, because no JavaScript
+    // ever ran. The URL has to be passed to `new`, which is the only constructor
+    // that accepts one.
+    //
+    // Found by running the built window on a real session. Every test here passed
+    // with a webview that could never load anything.
+    expect(mainCode()).toMatch(/WebviewBuilder::new\(/);
+    expect(mainCode()).toMatch(/WebviewUrl::App\(PAGE/);
+    expect(mainCode()).not.toMatch(/WebviewBuilder::from_config\(&declared\)/);
   });
 
   it("names the window rather than indexing the list", () => {

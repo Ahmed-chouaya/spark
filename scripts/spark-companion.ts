@@ -39,6 +39,9 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { currentCompanionAddress } from "../src/relay/address";
+import { watchChannel } from "../src/relay/watch";
+import { buildAdapterRegistry, describeSessions, foldAgentPayload, parse, sessionChange } from "../shell/src/adapters";
+import type { AgentSession } from "../src/state-selection/session";
 
 /** The root of this repository, from this file rather than from the cwd. */
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -113,7 +116,50 @@ const shell = run("cargo", ["run", "--manifest-path", CRATE], {
   [ADDRESS_VARIABLE]: address,
 });
 
+/**
+ * Watch the channel and report what the payloads made of it.
+ *
+ * ## Why this process does it as well as the window
+ *
+ * The window is the product, and the window folds these payloads through the
+ * same reduction this does. But on a platform that cannot hold a surface above
+ * other windows — GNOME, which is what this was built on — **correct behaviour is
+ * an empty desktop**, so "is a session open, and what is it doing" has no answer
+ * on the screen. This is that answer.
+ *
+ * It is the same adapters, the same fold and the same report function the
+ * document uses (`shell/src/adapters.ts`), so the two cannot disagree about what
+ * a payload means. It is a second listener rather than a second reduction: the
+ * channel is a socket and more than one client may connect, exactly as the relay
+ * connects to it.
+ *
+ * Changed-state only. A host that emits an event per token would otherwise print
+ * a line per token and the signal would be the noise.
+ */
+const adapters = buildAdapterRegistry();
+let seen: readonly AgentSession[] = [];
+
+// The window binds the address only after `cargo run` has compiled it, which on a
+// cold build is tens of seconds. Three one-second attempts would give up before
+// there is anything to watch, and a watcher that gives up silently is
+// indistinguishable from one that is working — so this waits for a window rather
+// than reporting that there is not one.
+const watching = await watchChannel({
+  attempts: 90,
+  retryDelayMs: 1_000,
+  onPayload: (payload: Buffer) => {
+    const folded = foldAgentPayload(seen, adapters, parse(payload.toString("utf8")));
+    const change = sessionChange(seen, folded.sessions);
+    seen = folded.sessions;
+
+    if (change === null) return;
+    for (const line of change.split("\n")) out(`companion: ${line}`);
+  },
+  onUnavailable: (reason) => note(`not watching: ${reason}`),
+});
+
 const stop = (): void => {
+  void watching?.close().catch(() => {});
   shell.kill();
 };
 

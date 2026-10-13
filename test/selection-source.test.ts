@@ -139,14 +139,22 @@ describe("this module holds no rendering, window or IPC concerns", () => {
   });
 
   it("reads no ambient clock, so the whole module is a function of its input", () => {
-    // `Date.now` is defaulted inside the adapter factory rather than called at
+    // `Date.now` is defaulted inside an adapter factory rather than called at
     // module scope; the default only runs if a caller omits the clock, and no
     // code path in this module reaches it on its own.
+    //
+    // The list rather than a count, because a second adapter defaulting the clock
+    // is the correct thing and a count would fail on it — which is how a guard
+    // ends up pressuring somebody into a shortcut. Naming them means adding one
+    // is a deliberate act.
     const callers = sources().filter(({ code: source }) =>
       code(source).includes("Date.now")
     );
 
-    expect(callers.map((c) => c.name)).toEqual(["adapters/claude-code.ts"]);
+    expect(callers.map((c) => c.name)).toEqual([
+      "adapters/claude-code.ts",
+      "adapters/opencode.ts",
+    ]);
   });
 });
 
