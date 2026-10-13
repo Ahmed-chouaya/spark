@@ -42,7 +42,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { createWriteStream, existsSync } from "node:fs";
+import { createWriteStream, existsSync, readFileSync } from "node:fs";
 import { copyFile, mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -78,6 +78,15 @@ export interface BuildStep {
   /** Files that must already exist before this step may run. */
   readonly needs: readonly string[];
   /**
+   * What to tell the reader when one of `needs` is absent.
+   *
+   * A step whose inputs are missing because they were never built wants
+   * "run the build"; a step whose inputs are missing because a committed file was
+   * deleted wants "regenerate that file", and the wrong sentence sends the reader
+   * to run a two-minute build that will fail the same way at the same line.
+   */
+  readonly missing?: string;
+  /**
    * Copies to make once the commands are done.
    *
    * The programs step has them and nothing else does, because copying is the one
@@ -85,6 +94,31 @@ export interface BuildStep {
    * same shape as the others keeps "the build is a list of steps" true.
    */
   readonly copies?: readonly (readonly [string, string])[];
+}
+
+/** Where the shell's own configuration lives, and the icon list it declares. */
+export const TAURI_CONFIG = join(REPO, "shell/src-tauri/tauri.conf.json");
+
+/** The command that regenerates the committed icon set. */
+export const MAKE_ICONS = "python3 shell/src-tauri/icons/make-icons.py";
+
+/**
+ * Every icon the bundle declares, resolved against the directory that declares it.
+ *
+ * **Read from the configuration rather than listed here**, and that is the whole
+ * of the guarantee: an icon the bundle asks for and this build has never heard of
+ * is an icon a build failure nobody can act on. The formats differ per platform
+ * and a wrong one does not produce an ugly icon — it produces a build failure, on
+ * the machine nobody is watching. So the check is derived from the same
+ * declaration the bundler reads, and a missing file is named.
+ */
+export function declaredBundleIcons(): string[] {
+  const config = JSON.parse(readFileSync(TAURI_CONFIG, "utf8")) as {
+    readonly bundle?: { readonly icon?: readonly string[] };
+  };
+  const icons = config.bundle?.icon ?? [];
+
+  return icons.map((icon) => join(REPO, "shell/src-tauri", icon));
 }
 
 /**
@@ -106,6 +140,16 @@ export function buildSteps(platform: NodeJS.Platform = process.platform): BuildS
   const beside = programsBeside(shell, platform);
 
   return [
+    {
+      name: "icons",
+      what: "the icon set the bundle is built from",
+      // First, and it costs nothing: every icon is committed, so a missing one is
+      // a deleted file rather than something this build has to go and make, and
+      // finding that out before two minutes of cargo beats finding it out after.
+      commands: [],
+      needs: declaredBundleIcons(),
+      missing: `is missing from the committed icon set. Regenerate it with: ${MAKE_ICONS}`,
+    },
     {
       name: "relay",
       what: "the program the host agent's hooks invoke",
@@ -224,7 +268,9 @@ export async function runBuild({
     // Named by what it is and by what is absent. "build failed" with a cargo
     // wall above it is the failure mode this line exists to replace.
     if (missing.length > 0) {
-      const failure = `build: ${step.name} cannot start — ${missing.join(", ")} not built. Run \`npm run build\` from the top.`;
+      const list = missing.join(", ");
+      const because = step.missing ?? "not built. Run `npm run build` from the top.";
+      const failure = `build: ${step.name} cannot start — ${list} ${because}`;
       record(failure);
       return { completed, failed: step.name, failure, lines };
     }

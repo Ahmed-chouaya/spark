@@ -54,10 +54,13 @@ describe("the companion is one window carrying nothing else", () => {
     expect(theWindow().label).toBe("companion");
   });
 
-  it("is not bundled as an installer, which is a product decision this change does not make", () => {
-    // Recorded so a later change that does decide it is a visible change rather
-    // than a line somebody adds while fixing something else.
-    expect(config.bundle.active).toBe(false);
+  it("is bundled, which is a decision `packaging` made and this change reversed", () => {
+    // Recorded as a line somebody reads while fixing something else. The shell
+    // used to declare `active: false` with the note that bundling was a product
+    // decision nothing had made; `packaging` made it, and the bundle is now part
+    // of `npm run build`. The per-platform target lists live beside this file as
+    // `tauri.<platform>.conf.json` and are held to by `test/bundle-icons.test.ts`.
+    expect(config.bundle.active).toBe(true);
   });
 });
 

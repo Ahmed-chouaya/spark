@@ -1,7 +1,10 @@
-import { dirname } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildSteps,
+  declaredBundleIcons,
+  REPO as REPO_ROOT,
   runBuild,
   type Command,
   type CommandResult,
@@ -39,15 +42,15 @@ const names = (platform: NodeJS.Platform = "linux"): readonly string[] =>
   buildSteps(platform).map((step) => step.name);
 
 describe("the build runs in an order, and the order is a dependency", () => {
-  it("builds the relay, then the wait, then the window, then the bundle", () => {
-    expect(names()).toEqual(["relay", "ask", "shell", "programs", "bundle"]);
+  it("builds the icons, then the relay, then the wait, then the window, then the bundle", () => {
+    expect(names()).toEqual(["icons", "relay", "ask", "shell", "programs", "bundle"]);
   });
 
   it("builds the same way on every platform, because the order is not a habit", () => {
     // Asserted rather than read off the source: an order that could differ by
     // platform would be an order somebody had to remember twice.
-    expect(names("win32")).toEqual(["relay", "ask", "shell", "programs", "bundle"]);
-    expect(names("darwin")).toEqual(["relay", "ask", "shell", "programs", "bundle"]);
+    expect(names("win32")).toEqual(["icons", "relay", "ask", "shell", "programs", "bundle"]);
+    expect(names("darwin")).toEqual(["icons", "relay", "ask", "shell", "programs", "bundle"]);
   });
 
   it("will not copy the programs before the window's own executable exists", async () => {
@@ -80,7 +83,7 @@ describe("the build runs in an order, and the order is a dependency", () => {
 
     expect(outcome.failed).toBe("bundle");
     expect(outcome.failure).toContain(beside.ask);
-    expect(outcome.completed).toEqual(["relay", "ask", "shell", "programs"]);
+    expect(outcome.completed).toEqual(["icons", "relay", "ask", "shell", "programs"]);
   });
 });
 
@@ -94,7 +97,7 @@ describe("a failure names the thing that failed", () => {
       platform: "linux",
     });
 
-    // The wait is the second step, and the one that matters most: a hook pointing
+    // The wait is the third step, and the one that matters most: a hook pointing
     // at a missing binary stalls the user's agent on every tool call, so "the
     // build failed" is not a message anybody can act on.
     expect(outcome.failed).toBe("ask");
@@ -113,7 +116,7 @@ describe("a failure names the thing that failed", () => {
       platform: "linux",
     });
 
-    expect(outcome.completed).toEqual([]);
+    expect(outcome.completed).toEqual(["icons"]);
     expect(outcome.failed).toBe("relay");
     // Nothing after it ran, so the bundler was never asked to package a window
     // whose own programs had not been built.
@@ -157,7 +160,7 @@ describe("a failure names the thing that failed", () => {
 
     expect(outcome.failed).toBe("programs");
     expect(outcome.failure).toContain("could not copy");
-    expect(outcome.completed).toEqual(["relay", "ask", "shell"]);
+    expect(outcome.completed).toEqual(["icons", "relay", "ask", "shell"]);
   });
 
   it("says only what happened, in the order it happened", async () => {
@@ -173,11 +176,73 @@ describe("a failure names the thing that failed", () => {
 
     expect(outcome.failed).toBe("shell");
     expect(outcome.lines).toEqual([
+      "build: icons — the icon set the bundle is built from",
       "build: relay — the program the host agent's hooks invoke",
       "build: ask — the program that waits for your answer",
       "build: shell — the window, and the page it loads",
       expect.stringContaining("build: shell failed"),
     ]);
+  });
+});
+
+describe("an incomplete icon set fails the build, naming the file", () => {
+  it("takes the list from the bundle's own declaration rather than from this file", () => {
+    // Read from `tauri.conf.json`, not written here. The formats differ per
+    // platform and a wrong one does not produce an ugly icon — it produces a
+    // build failure, on the machine nobody is watching. A list kept here is a
+    // list that drifts from the one the bundler reads.
+    const declared = (
+      JSON.parse(readFileSync(join(REPO_ROOT, "shell/src-tauri/tauri.conf.json"), "utf8")) as {
+        bundle: { icon: string[] };
+      }
+    ).bundle.icon;
+
+    expect(declared.length).toBeGreaterThan(0);
+    expect(declaredBundleIcons()).toEqual(
+      declared.map((icon) => join(REPO_ROOT, "shell/src-tauri", icon))
+    );
+  });
+
+  it("refuses to start, and names the file that is not there", async () => {
+    const missing = join(REPO_ROOT, "shell/src-tauri/icons/icon.ico");
+    const outcome = await runBuild({
+      run: succeeding(),
+      exists: (path) => path !== missing,
+      platform: "linux",
+    });
+
+    // Before anything else, and saying how to put it back: an icon set is
+    // committed, so a missing icon is a deleted file and the fix is a
+    // regeneration, not a build anybody should re-run to find out why it broke.
+    expect(outcome.failed).toBe("icons");
+    expect(outcome.completed).toEqual([]);
+    expect(outcome.failure).toContain(missing);
+    expect(outcome.failure).toContain("make-icons.py");
+  });
+
+  it("checks every icon the declaration names, not just the first", async () => {
+    // A first-match check passes the moment two files are declared and one is
+    // missing, which is the case that matters on a platform with an extra format.
+    const icns = join(REPO_ROOT, "shell/src-tauri/icons/icon.icns");
+    const outcome = await runBuild({
+      run: succeeding(),
+      exists: (path) => path !== icns,
+      platform: "linux",
+    });
+
+    expect(outcome.failed).toBe("icons");
+    expect(outcome.failure).toContain(icns);
+  });
+
+  it("names the file rather than the set, because a name is what is actionable", async () => {
+    const outcome = await runBuild({
+      run: succeeding(),
+      exists: (path) => !path.endsWith(".ico"),
+      platform: "win32",
+    });
+
+    expect(outcome.failure).toMatch(/icons[\\/]icon\.ico/);
+    expect(outcome.failure).not.toContain("not built");
   });
 });
 
@@ -244,12 +309,13 @@ describe("the programs go where an installed companion can find them", () => {
   });
 });
 
-describe("every path the build asks about is one the owner names", () => {
+describe("every binary path the build asks about is one the owner names", () => {
   it("takes them from `src/relay/binary.ts` and from nowhere else", async () => {
     // A build that resolved its own paths would fail this, and so would one that
     // took them from a caller. The evidence is that the paths it asks about *are*
-    // the owner's paths — asked for from Linux, for the Windows spelling, because
-    // that is the only machine this can be checked on.
+    // the owner's paths — asked for with the Windows spelling, because that is
+    // the only machine this can be checked on and the only one where the answer
+    // differs.
     const asked: string[] = [];
     await runBuild({
       run: succeeding(),
@@ -268,8 +334,15 @@ describe("every path the build asks about is one the owner names", () => {
       programsBeside(shellCommand("win32"), "win32").ask,
     ];
 
-    expect(asked.length).toBeGreaterThan(0);
-    for (const path of asked) expect(owned, `${path} is not one the owner names`).toContain(path);
+    // The icons are asked about too, and they are not the owner's to name: they
+    // come from the bundle's own declaration, which is a different question with
+    // a different owner. Narrowed to the binaries, because "every path" is
+    // precisely the claim that is not true.
+    const binaries = asked.filter((path) => !path.includes("icons"));
+
+    expect(binaries.length).toBeGreaterThan(0);
+    for (const path of binaries) expect(owned, `${path} is not one the owner names`).toContain(path);
+    expect(asked.length).toBeGreaterThan(binaries.length);
   });
 });
 
