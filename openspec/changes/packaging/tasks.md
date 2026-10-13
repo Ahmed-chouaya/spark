@@ -15,10 +15,10 @@
 
 ## 3. Doctor
 
-- [ ] 3.1 Implement `npm run doctor` reporting whether the hooks are installed, whether the programs they name exist, and whether they are this install's
-- [ ] 3.2 Report whether the companion is reachable at the address it should be, and verify an absent companion is reported rather than treated as a failure of the tool
-- [ ] 3.3 Report the platform's persistent-surface answer from the same probe the surface uses, and verify the two cannot disagree because there is only one probe
-- [ ] 3.4 Verify the doctor changes nothing: no file written, no hook installed, no setting altered
+- [x] 3.1 Implement `npm run doctor` reporting whether the hooks are installed, whether the programs they name exist, and whether they are this install's
+- [x] 3.2 Report whether the companion is reachable at the address it should be, and verify an absent companion is reported rather than treated as a failure of the tool
+- [x] 3.3 Report the platform's persistent-surface answer from the same probe the surface uses, and verify the two cannot disagree because there is only one probe
+- [x] 3.4 Verify the doctor changes nothing: no file written, no hook installed, no setting altered
 
 ## 4. The README
 

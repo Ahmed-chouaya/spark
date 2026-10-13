@@ -17,6 +17,7 @@
     "relay:uninstall": "node scripts/relay-install.ts uninstall",
     "relay:uninstall:wait": "node scripts/relay-install.ts uninstall-wait",
     "companion": "vite-node scripts/spark-companion.ts",
+    "doctor": "node scripts/doctor.ts",
     "shell:build": "vite build --config shell/vite.config.ts",
     "shell:run": "cargo run --manifest-path shell/src-tauri/Cargo.toml",
     "relay:verify": "vite-node scripts/relay-integration.ts",

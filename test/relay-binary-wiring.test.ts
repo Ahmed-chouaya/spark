@@ -26,6 +26,7 @@ import { describe, expect, it } from "vitest";
 const CALLERS = [
   "scripts/relay-install.ts",
   "scripts/relay-integration.ts",
+  "scripts/doctor.ts",
   "scripts/build.ts",
   "test/relay.test.ts",
 ];
@@ -100,7 +101,8 @@ describe("only one place knows where the relay is built", () => {
         body.includes("shellCommand(") ||
         body.includes("programsBeside(") ||
         body.includes("installedPrograms(") ||
-        body.includes("findInstalledPrograms(");
+        body.includes("findInstalledPrograms(") ||
+        body.includes("resolvePrograms(");
       if (!resolvesIt) continue;
 
       expect(
