@@ -1,0 +1,36 @@
+[package]
+name = "spark-ask"
+version = "0.1.0"
+edition = "2021"
+description = "Announces a host agent's hook payload to the Spark companion, waits for an answer, and prints it. Or prints nothing."
+publish = false
+
+[[bin]]
+name = "spark-ask"
+path = "src/main.rs"
+
+# No dependencies.
+#
+# A second copy of the reason `relay/Cargo.toml` gives, and the temptation is
+# worse here rather than weaker: this program is on the host agent's critical
+# path, so a start-up cost is felt on every tool call and a start-up failure is
+# felt as "my agent is broken". A serialiser would buy nothing — this program
+# moves opaque bytes in both directions and has no idea what is in them — and it
+# would cost a dependency tree to do it.
+#
+# The reply frame is a length and two newlines, not JSON, precisely so that
+# staying dependency-free costs nothing. See `frame` in src/main.rs.
+[dependencies]
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[profile.release]
+# The same profile the relay builds with, for the same reason: the file the host
+# agent is configured to run has nothing in it that can fail to resolve on the
+# machine it is copied to.
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

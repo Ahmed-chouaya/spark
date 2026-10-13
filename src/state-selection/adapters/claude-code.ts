@@ -5,16 +5,24 @@ import type { EffortSignals } from "../tool-effort";
 /**
  * The Claude Code hook fields this adapter reads.
  *
- * `tool_name` is deliberately absent. It is the field a per-tool mapping would
- * key off, and an adapter that reads it is one refactor away from being one.
- * What it reads instead is what the work *cost*: how long it ran and how much it
- * moved. See ./tool-effort for why that is enough.
+ * `tool_name` is present but deliberately unread. It is the field a per-tool
+ * mapping would key off, and an adapter that reads it is one refactor away from
+ * being one. What it reads instead is what the work *cost*: how long it ran and
+ * how much it moved. See ./tool-effort for why that is enough.
+ *
+ * It is *declared* because something else reads it — `src/companion/request.ts`,
+ * which has to say what is being asked for on a card a person decides on. That
+ * reader is a different question asked by a different consumer, and keeping the
+ * field on the shared payload type is what stops that reader from re-declaring
+ * the shape of a Claude Code hook. See that file for why the two are separate and
+ * what each is forbidden from doing.
  */
 export interface ClaudeCodePayload {
   readonly hook_event_name: string;
   readonly session_id: string;
   readonly timestamp?: number;
   readonly tool_use_id?: string;
+  readonly tool_name?: string;
   readonly tool_input?: unknown;
   readonly tool_response?: unknown;
   readonly notification_type?: string;

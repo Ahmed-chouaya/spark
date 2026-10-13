@@ -1,11 +1,13 @@
 /**
- * The companion's address: one documented path, derived from the owning user.
+ * The companion's addresses: documented paths, derived from the owning user.
  *
  * ## The rule
  *
  * ```
- *   unix    <root>/spark-<uid>/companion.sock
+ *   unix    <root>/spark-<uid>/companion.sock     <- relay, one way
+ *           <root>/spark-<uid>/decisions.sock    <- decision, request and answer
  *   windows \\.\pipe\spark-<username>-companion
+ *           \\.\pipe\spark-<username>-decisions
  * ```
  *
  * `ROOT` is `/tmp` and is fixed rather than read from the environment, for a
@@ -21,18 +23,36 @@
  * The parent directory is created `0700` by the companion, so the identity in
  * the path is not the only thing keeping users apart; it is the first of two.
  *
+ * ## Why the decisions socket is a second address
+ *
+ * Two listeners, two protocols, one per socket. A relay writes a payload and
+ * leaves; a decision requester writes a payload and waits for an answer that
+ * arrives on the same connection. A single listener serving both would have to
+ * decide, per connection, which of the two it is talking to — and it would have
+ * to decide it by looking at the bytes, because nothing negotiates.
+ *
+ * Guessing from the bytes is the failure this project has already declined
+ * once. The relay exists as a separate program precisely so that no code on the
+ * host's critical path has to know what a payload means, and the shape of that
+ * argument does not change when the code is TypeScript instead of Rust: a
+ * listener that guesses is a listener that eventually guesses wrong about a
+ * payload nobody wrote it for. Two sockets cost one more entry in a directory
+ * that is already `0700`, and they cost nothing anywhere else.
+ *
  * ## Why identity and not a negotiated value
  *
  * The address is never chosen by one party and told to the other. A negotiation
  * step is another thing that can fail at the worst moment — the moment a user
  * needs the mascot — and there is nothing to negotiate here: the companion is
- * always at *its own* address and the relay always looks for it there.
+ * always at *its own* address and every program that talks to it looks for it
+ * there.
  *
- * This module and `relay/src/address.rs` are two implementations of this one
- * rule, in two languages, on purpose: the relay has to be a program with no
- * runtime, and that is worth one file of duplication that a test can pin. They
- * are kept honest by `test/relay-address.test.ts`, which builds the relay and
- * compares the two answers.
+ * This module, `relay/src/address.rs` and `ask/src/address.rs` are three
+ * implementations of this one rule, in two languages, on purpose: the programs
+ * have to run with no runtime and no installed package, and that is worth files
+ * of duplication that a test can pin. They are kept honest by
+ * `test/relay-address.test.ts` and `test/decision-address.test.ts`, which build
+ * the binaries and compare the answers.
  *
  * ## What this is not
  *
@@ -60,11 +80,14 @@ export const UNIX_CHANNEL_ROOT = "/tmp";
 /** The directory name a uid gets. One per user, whatever the username is. */
 const unixDirectory = (uid: number): string => `spark-${uid}`;
 
-/** The socket file inside it. */
+/** The socket file inside it, for the relay. One way, and it leaves. */
 const unixSocketName = "companion.sock";
 
+/** The socket file inside it, for a decision. In, and an answer back out. */
+const unixDecisionSocketName = "decisions.sock";
+
 /**
- * The companion's address for one user.
+ * The companion's relay address for one user.
  *
  * Pure: it reads nothing, so a test can ask what two users would get without
  * being one of them.
@@ -79,6 +102,21 @@ export function companionAddress(identity: UserIdentity): string {
   }
 
   return `${UNIX_CHANNEL_ROOT}/${unixDirectory(identity.uid)}/${unixSocketName}`;
+}
+
+/**
+ * The companion's decision address for one user.
+ *
+ * The same rule and the same directory, the other socket. See the module note
+ * for why a program that waits for an answer does not share an address with one
+ * that does not.
+ */
+export function decisionAddress(identity: UserIdentity): string {
+  if (identity.kind === "name") {
+    return `\\\\.\\pipe\\spark-${identity.name}-decisions`;
+  }
+
+  return `${UNIX_CHANNEL_ROOT}/${unixDirectory(identity.uid)}/${unixDecisionSocketName}`;
 }
 
 /**
@@ -105,4 +143,10 @@ export function currentIdentity(): UserIdentity | null {
 export function currentCompanionAddress(): string | null {
   const identity = currentIdentity();
   return identity ? companionAddress(identity) : null;
+}
+
+/** This user's decision address, or `null` when the user cannot be identified. */
+export function currentDecisionAddress(): string | null {
+  const identity = currentIdentity();
+  return identity ? decisionAddress(identity) : null;
 }

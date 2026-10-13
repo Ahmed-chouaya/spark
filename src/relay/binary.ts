@@ -1,5 +1,5 @@
 /**
- * Where the relay's built binary is, and whether it is one.
+ * Where a built binary is, and whether it is one.
  *
  * ## Why this is its own module
  *
@@ -16,6 +16,11 @@
  * that refuses, because the user finds out when their agent quietly stops
  * reporting — so the answer lives in one place and the callers are thin.
  *
+ * It grew a second program when `ask/` arrived, and the reason it did not grow a
+ * second module is the reason the first module exists: the extension rule is the
+ * one fact that was got wrong twice, and a second copy of the fact is how it
+ * gets got wrong a third time, on a machine that has not happened yet.
+ *
  * ## The two questions
  *
  * *Which file* is a build-layout fact that differs by platform. *Whether it is a
@@ -29,7 +34,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * The relay's name on this platform.
+ * A binary's name on this platform.
  *
  * Cargo appends `.exe` on Windows and nothing anywhere else. This is the rule
  * rather than the answer: a caller passes the base name and gets the spelling
@@ -41,9 +46,27 @@ import { fileURLToPath } from "node:url";
  * the bug this rule prevents could only ever have been found by running on the
  * platform it affects, which is the one platform this project cannot run on.
  */
-export function relayBinaryName(base: string, platform: NodeJS.Platform = process.platform): string {
+export function binaryName(base: string, platform: NodeJS.Platform = process.platform): string {
   return platform === "win32" ? `${base}.exe` : base;
 }
+
+/**
+ * The name `relayBinaryName` is documented as answering.
+ *
+ * A re-export rather than a second function, so the callers that already knew
+ * this name keep working and the rule still has exactly one implementation.
+ */
+export const relayBinaryName = binaryName;
+
+/** The one place allowed to name a built binary's location. */
+const CRATE = (crate: string, binary: string): string =>
+  resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "../..",
+    crate,
+    "target/release",
+    binary
+  );
 
 /**
  * The relay, as the host agent will invoke it.
@@ -53,7 +76,8 @@ export function relayBinaryName(base: string, platform: NodeJS.Platform = proces
  * means, and a hook that cannot find its own binary is a hook that fails once
  * per event for the rest of the user's time with the agent.
  *
- * This is the only place in the companion that knows where the built binary is.
+ * This is the only place in the companion that knows where the built binaries
+ * are.
  *
  * A function rather than a constant so that a test can ask what it answers on a
  * platform other than this one. The naming rule is the thing that was got wrong
@@ -62,12 +86,19 @@ export function relayBinaryName(base: string, platform: NodeJS.Platform = proces
  * being written on Linux.
  */
 export function relayCommand(platform: NodeJS.Platform = process.platform): string {
-  // Up out of `src/relay` to the repository root, then into the Rust crate.
-  // Written relative to this module so moving it does not silently repoint every
-  // installed hook at a different file.
-  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+  return CRATE("relay", binaryName("spark-relay", platform));
+}
 
-  return resolve(repoRoot, "relay/target/release", relayBinaryName("spark-relay", platform));
+/**
+ * The waiting program, as the host agent will invoke it.
+ *
+ * The same reasoning, for a program that matters more: this one runs on the
+ * critical path of a tool call, so a hook pointing at a file that is not there
+ * is a stall on every tool call rather than a report that stops arriving. It
+ * takes a platform parameter for the same reason `relayCommand` does.
+ */
+export function askCommand(platform: NodeJS.Platform = process.platform): string {
+  return CRATE("ask", binaryName("spark-ask", platform));
 }
 
 /**

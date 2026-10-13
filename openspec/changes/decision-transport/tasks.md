@@ -2,15 +2,15 @@
 
 ## 1. The waiting program
 
-- [ ] 1.1 Scaffold `ask/` as a Rust crate with no dependencies beyond `libc` on Unix, and verify the built binary links nothing that has to be installed
-- [ ] 1.2 Read the payload from standard input and bound it, and verify an unreadable or empty input produces no output and a successful exit
-- [ ] 1.3 Generate a request id rather than reading one from the payload, so the host's vocabulary does not come to exist in this program
+- [x] 1.1 Scaffold `ask/` as a Rust crate with no dependencies beyond `libc` on Unix, and verify the built binary links nothing that has to be installed
+- [x] 1.2 Read the payload from standard input and bound it, and verify an unreadable or empty input produces no output and a successful exit
+- [x] 1.3 Generate a request id rather than reading one from the payload, so the host's vocabulary does not come to exist in this program
 - [ ] 1.4 Derive the companion's address with the same rule the relay uses, and verify both programs agree by building both and comparing what each resolves to
-- [ ] 1.5 Open the channel, announce the request, and wait for a reply on a thread that is not the one that enforces the deadline
-- [ ] 1.6 Enforce the deadline in the program making the host wait, and verify that with a companion that never answers it exits at its bound
+- [x] 1.5 Open the channel, announce the request, and wait for a reply on a thread that is not the one that enforces the deadline
+- [x] 1.6 Enforce the deadline in the program making the host wait, and verify that with a companion that never answers it exits at its bound
 - [ ] 1.7 Print the host's documented permission-decision shape for an allow and for a deny, and verify the bytes on standard output are what the host would parse
-- [ ] 1.8 Print nothing and exit successfully on every failure path — absent companion, unopenable channel, unreadable input, broken exchange — and verify stdout is empty rather than merely parseable
-- [ ] 1.9 Verify a timeout produces no decision at all rather than a refusal, because a deadline that denies is a denial the user never made
+- [x] 1.8 Print nothing and exit successfully on every failure path — absent companion, unopenable channel, unreadable input, broken exchange — and verify stdout is empty rather than merely parseable
+- [x] 1.9 Verify a timeout produces no decision at all rather than a refusal, because a deadline that denies is a denial the user never made
 
 ## 2. The channel's reply
 

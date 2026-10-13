@@ -12,6 +12,36 @@
  * The one thing it does decide is **who may connect**, because that is a
  * property of the channel rather than of anything the channel carries.
  *
+ * ## Two listeners, one rule
+ *
+ * `openChannel` is the one-way path: a relay writes a payload and leaves. It is
+ * the path the relay's "never blocks the host" guarantee is about, and nothing
+ * here changes it — the callback it takes, when it is called, and what it is
+ * given are exactly what they were.
+ *
+ * `openReplyChannel` is the other one: a request arrives and an answer goes back
+ * on the connection that asked. It is an *addition* rather than a mode, because
+ * a mode is a branch, and a branch is where a guarantee quietly stops being
+ * true — and the guarantee this file's most important consumer relies on is that
+ * the one-way path has no code in it the other one can reach. Two entry points
+ * sharing the directory, socket and takeover rules below is what makes that
+ * structurally true rather than a matter of care.
+ *
+ * They listen at different addresses (see `./address`), which is what keeps
+ * either of them from having to tell the other's traffic apart.
+ *
+ * ## The answer is bound to its request
+ *
+ * `PendingRequestChannel.reply` takes the decision and nothing else. It closes
+ * over the socket that opened this request and over the identifier read from it,
+ * so there is no argument naming a request and therefore no way to answer one
+ * request with another request's decision.
+ *
+ * That rule is not asked of callers here; it is enforced in transport, because
+ * it is the rule that `../escalation/pending` exists to protect and this is the
+ * last place a mistake in it becomes a decision about what somebody's agent may
+ * do.
+ *
  * ## Only the owner may connect
  *
  * Two independent barriers, either of which is sufficient, and both of which are
@@ -47,7 +77,7 @@
 import { createServer, type Server, type Socket } from "node:net";
 import { chmod, mkdir, stat, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
-import { currentCompanionAddress } from "./address";
+import { currentCompanionAddress, currentDecisionAddress } from "./address";
 
 /**
  * The most this listener will accept from one connection.
@@ -68,6 +98,229 @@ const DIRECTORY_MODE = 0o700;
 
 /** How a payload arrives: the bytes, unaltered, and nothing about them. */
 export type PayloadHandler = (payload: Buffer) => void;
+
+/**
+ * One request waiting for its answer, and the answer's only route home.
+ *
+ * Binding rather than addressing is the point: see the module note. A `reply`
+ * that took a request identifier would be asking every caller to get right the
+ * one rule whose violation turns a convenience into a hazard, and asking is
+ * exactly how that rule would eventually be got wrong.
+ */
+export interface PendingRequestChannel {
+  /** This request's own identifier, as the requester named it. */
+  readonly id: string;
+  /** The host's payload, unaltered. This channel has not read it. */
+  readonly payload: Buffer;
+  /** Answer on this connection. Returns whether the bytes were handed over. */
+  reply(decision: Buffer): boolean;
+}
+
+export interface ReplyChannelOptions {
+  /**
+   * Called once per request, with the connection still open.
+   *
+   * Synchronous, like `onPayload` and for the same reason: the channel has
+   * already accepted the request by the time it is called, and an answer that
+   * has not been decided yet is not a reason to hold a connection open on the
+   * host's behalf. A handler that answers at once may; one that answers later
+   * finds the connection gone if the requester stopped waiting first, and that
+   * is the correct outcome rather than an answer buffered for nobody.
+   */
+  readonly onRequest: (request: PendingRequestChannel) => void;
+  /**
+   * Where to listen. Omitted, the address derived from the owning user — the
+   * only value the program on the other end can reach, for the reason `./address`
+   * says the address is derived rather than negotiated.
+   */
+  readonly address?: string;
+}
+
+/**
+ * Listen on the companion's decision channel: requests in, answers out.
+ *
+ * The frame is the one `ask/src/main.rs` writes and reads:
+ *
+ * ```text
+ *   request   <id> LF <length> LF <payload>
+ *   answer    <id> LF <length> LF <decision>
+ * ```
+ *
+ * A length and two newlines rather than JSON, because the program on the other
+ * end has no dependencies at all and cannot pay for a parser — see that file's
+ * module note for the argument. Nothing here interprets either half: the
+ * identifier is compared, not read, and the payload and the decision are passed
+ * through byte for byte.
+ *
+ * Every barrier below — the `0700` directory, the `0600` socket, the ownership
+ * check before anything is taken over — is the one `openChannel` applies. The
+ * reply path is the most sensitive thing this module will ever carry, so it is
+ * held to the same rules as the least, and the differences between the two
+ * listeners are in what they do with bytes and nowhere else.
+ */
+export async function openReplyChannel(options: ReplyChannelOptions): Promise<CompanionChannel> {
+  const address = options.address ?? currentDecisionAddress();
+  if (!address) {
+    throw new Error(
+      "cannot derive the companion's decision address: the running user has no readable identity"
+    );
+  }
+
+  await ensurePrivateDirectory(address);
+
+  const server = createServer((socket: Socket) => readOneRequest(socket, options.onRequest));
+
+  await bind(server, address);
+  await restrictSocketToOwner(address);
+
+  return {
+    address,
+    close: () => new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    }),
+  };
+}
+
+/**
+ * Read one request from one connection, and keep that connection for its answer.
+ *
+ * The opposite of `readOnePayload` in the one respect that matters: this does not
+ * treat the end of the stream as the end of the payload, because the writer is
+ * still there — waiting — and the thing that ends its frame is the length it
+ * wrote. So the length is what this reads, and the connection stays open until
+ * an answer has gone or the requester has gone.
+ *
+ * A requester's absence is not detected and not waited for. A requester that gave
+ * up takes its socket with it, the next write fails, and `reply` reports that it
+ * delivered nothing. That is the only signal there is, and it is the same signal
+ * the deadline gives it: silence on the far end, noticed by trying.
+ */
+function readOneRequest(socket: Socket, onRequest: (request: PendingRequestChannel) => void): void {
+  let received = Buffer.alloc(0);
+  let handed = false;
+
+  socket.on("data", (chunk: Buffer) => {
+    // Once the request has been handed on, later bytes belong to nothing this
+    // listener is waiting for. The answer goes out through `reply`, which writes
+    // it, and a requester sends none.
+    if (handed) return;
+
+    received = Buffer.concat([received, chunk]);
+
+    const frame = takeFrame(received);
+    if (frame === null) {
+      // Incomplete, or past what a header may be. The header bound rather than
+      // the payload bound is deliberate: a requester that has not reached its
+      // length line in a quarter of a kilobyte is not one that will, and this is
+      // a program the host agent is waiting on.
+      if (received.length > MAX_REQUEST_HEADER_BYTES) socket.destroy();
+      return;
+    }
+
+    handed = true;
+    // Reading stops here. Nothing more on this connection enters memory unless a
+    // request asks for it, which is the property `readOnePayload` also has.
+    socket.pause();
+    onRequest(makeRequest(socket, frame.id, frame.payload));
+  });
+
+  socket.on("error", () => {
+    socket.destroy();
+  });
+}
+
+/**
+ * One complete frame out of what has arrived, or `null` while there is not one.
+ *
+ * Binary-safe on the payload and text-only on the two header lines, which is all
+ * the format claims: an identifier and a length are ASCII by construction,
+ * because the program that writes them generates them (see `ask/src/main.rs`).
+ *
+ * The payload is taken by the length it declares rather than by where the bytes
+ * happen to stop, so a payload containing newlines — and a hook payload is JSON,
+ * so it does — arrives whole. A frame that claims more than `MAX_PAYLOAD_BYTES`
+ * is refused rather than waited for: this is a listener on a host's critical
+ * path, and a header claiming a gigabyte is not a request that is about to
+ * arrive.
+ */
+function takeFrame(received: Buffer): { id: string; payload: Buffer } | null {
+  const firstBreak = received.indexOf(0x0a);
+  if (firstBreak < 0) return null;
+
+  const secondBreak = received.indexOf(0x0a, firstBreak + 1);
+  if (secondBreak < 0) return null;
+
+  const id = received.subarray(0, firstBreak).toString("utf8");
+  const length = Number(received.subarray(firstBreak + 1, secondBreak).toString("utf8"));
+
+  if (!id || !Number.isInteger(length) || length < 0 || length > MAX_PAYLOAD_BYTES) return null;
+
+  const body = received.subarray(secondBreak + 1);
+  if (body.length < length) return null;
+
+  return { id, payload: Buffer.from(body.subarray(0, length)) };
+}
+
+/**
+ * The request, and the one way its answer can leave.
+ *
+ * Two refusals, both of them the safe direction. An answer larger than a payload
+ * is refused rather than truncated, because half a decision is not a decision
+ * and a host handed half an object is owed the same silence as one handed none.
+ * A second answer is refused because a second one is not a stronger one, and
+ * because two answers on one connection is a frame a reader could take as two
+ * decisions.
+ *
+ * Both checks are before the write rather than after it, so there is no state in
+ * which half an answer has gone out and the failure is discovered afterwards.
+ *
+ * A refusal still closes the connection. That is not tidiness: the requester is
+ * a program on the host agent's critical path, and a connection left open after
+ * the only answer it could have had was refused would keep the host waiting for
+ * a reply that is never coming — until its own deadline, ten seconds later, for
+ * an outcome already known here. Ending it lets the host fall back to asking the
+ * user immediately, which is what both refusals mean.
+ */
+function makeRequest(socket: Socket, id: string, payload: Buffer): PendingRequestChannel {
+  let answered = false;
+
+  return {
+    id,
+    payload,
+    reply(decision: Buffer): boolean {
+      if (answered) return false;
+      answered = true;
+
+      if (decision.length > MAX_PAYLOAD_BYTES) {
+        socket.end();
+        return false;
+      }
+
+      const frame = Buffer.concat([
+        Buffer.from(`${id}\n${decision.length}\n`, "utf8"),
+        decision,
+      ]);
+
+      // One write, so a reader that reads in pieces cannot see two frames. A
+      // decision split across two writes could be read as two decisions, and this
+      // is the thing that decides what an agent may do.
+      const delivered = socket.writable && socket.write(frame);
+      socket.end();
+
+      return delivered;
+    },
+  };
+}
+
+/**
+ * The most a request's header may be, in bytes.
+ *
+ * Measured over everything received before a frame completes, so it covers the
+ * two header lines and whatever payload is already in hand. Small on purpose:
+ * this is a program the host agent is waiting on, and a connection that has not
+ * reached its length line in a quarter of a kilobyte is not one that will.
+ */
+const MAX_REQUEST_HEADER_BYTES = 256;
 
 export interface ChannelOptions {
   /**
