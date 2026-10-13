@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { askCommand, binaryName, isNativeBinary } from "../src/relay/binary";
 import { currentCompanionAddress, currentDecisionAddress } from "../src/relay/address";
+import { openReplyChannel, type CompanionChannel } from "../src/relay/channel";
+import { permissionDecision } from "../src/companion/decision";
 import { dllNames, foreignImports, installedSystemDlls, linkedFromLdd } from "./support/imports";
 
 /**
@@ -52,12 +54,16 @@ interface Received {
 type Behaviour = (request: Received, connection: Socket) => void;
 
 const servers: Server[] = [];
+const opened: CompanionChannel[] = [];
 
 /** Every companion listening right now, closed. They share one derived address. */
 const closeCompanions = async (): Promise<void> => {
   await Promise.all(
-    servers.splice(0).map((server) => new Promise<void>((done) => server.close(() => done())))
+    servers
+      .splice(0)
+      .map((server) => new Promise<void>((done) => server.close(() => done())))
   );
+  await Promise.all(opened.splice(0).map((channel) => channel.close().catch(() => {})));
 };
 
 afterEach(closeCompanions);
@@ -258,6 +264,51 @@ describe("the two halves derive one address", () => {
 
     expect(run.status).toBe(0);
     expect((await arrived).payload.toString("utf8")).toBe(asking());
+  });
+
+  it("is reached by the production listener, the one with no address given", async () => {
+    // The default, not an option. A hook the user installs has no address to pass
+    // — the program derives it — so the path that matters is the one where the
+    // companion opens its channel with nothing given at all, and this asserts it
+    // binds the socket the TypeScript side derives rather than the relay's.
+    //
+    // It belongs here and not in `test/decision-channel.test.ts` because this file
+    // owns the derived address: two files binding one socket does not fail
+    // politely, it takes the socket from whichever was listening first.
+    //
+    // This is the real listener, so the frames on this connection are the real
+    // module's, which is the point — the program is being answered by the
+    // companion as it ships rather than by a hand-written stand-in.
+    //
+    // Awaited before the program is spawned rather than raced against it: a
+    // listener that is still binding is a connection refused, and a connection
+    // refused fails open, so the test would have watched silence and called it a
+    // pass.
+    let seen: Received | undefined;
+    const channel = await openReplyChannel({
+      onRequest: (request) => {
+        request.reply(permissionDecision("deny"));
+        seen = { id: request.id, payload: request.payload };
+      },
+    });
+    opened.push(channel);
+
+    expect(channel.address).toBe(currentDecisionAddress());
+    expect(channel.address).not.toBe(currentCompanionAddress());
+
+    const run = await ask(asking());
+
+    expect(run.status).toBe(0);
+    expect(seen?.payload.toString("utf8")).toBe(asking());
+    // The bytes the host would have parsed, produced by the companion as it ships
+    // and printed by the program as it ships.
+    expect(JSON.parse(run.stdout)).toEqual({
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: "Refused in the Spark companion.",
+      },
+    });
   });
 });
 

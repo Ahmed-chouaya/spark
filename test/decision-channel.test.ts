@@ -27,6 +27,20 @@ import {
  * agree with itself by construction, and the two could be wrong together — which
  * is precisely the disagreement that leaves a user's agent waiting for a reply
  * that has been sent in a shape it cannot read.
+ *
+ * ## Why every channel here is at a scratch address
+ *
+ * Including the one that checks the production default. The address derived from
+ * the running user is a single socket, and `test/ask.test.ts` owns it — it spawns
+ * the program that connects to it. Two files binding one path do not fail
+ * politely: the second `listen` takes the socket, the first becomes unreachable,
+ * and the result is an `EADDRINUSE` in whichever file lost the race and a
+ * round trip that passed vacuously in the other.
+ *
+ * So this file tests the reply path's *behaviour* at addresses it makes, and the
+ * derived default — that `openReplyChannel` with no address binds the decision
+ * socket and not the relay's — is asserted in `test/ask.test.ts`, by the file
+ * that already holds that socket and drives a real request through it.
  */
 
 const open: CompanionChannel[] = [];
@@ -271,21 +285,6 @@ describe("the reply path is held to the same barriers as the one-way path", () =
     // process umask applied, and a permissive umask would leave it connectable
     // by anyone who had the path.
     expect(statSync(channel.address).mode & 0o777).toBe(0o600);
-  });
-
-  it("reaches the derived address when none is given, and not the relay's", async () => {
-    const { currentCompanionAddress, currentDecisionAddress } = await import(
-      "../src/relay/address"
-    );
-
-    const channel = await openReplyChannel({ onRequest: () => {} });
-    open.push(channel);
-
-    // Two sockets, one directory. A single address would mean one listener
-    // guessing which of two protocols it was speaking, and a listener that
-    // guesses is what `relay/` was created to avoid.
-    expect(channel.address).toBe(currentDecisionAddress());
-    expect(channel.address).not.toBe(currentCompanionAddress());
   });
 
   it("takes over an address left behind rather than refusing to start", async () => {
