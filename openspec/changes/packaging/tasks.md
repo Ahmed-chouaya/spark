@@ -29,6 +29,6 @@
 
 ## 5. Verification
 
-- [ ] 5.1 Verify from a clean checkout that `npm run build` produces something that starts, on this machine
-- [ ] 5.2 Run the full suite and record the count
-- [ ] 5.3 Record in the README the exact commands a person on Windows should run, since that is the platform where this has been tested end to end
+- [x] 5.1 Verify from a clean checkout that `npm run build` produces something that starts, on this machine
+- [x] 5.2 Run the full suite and record the count
+- [x] 5.3 Record in the README the exact commands a person on Windows should run, since that is the platform where this has been tested end to end

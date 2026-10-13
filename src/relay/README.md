@@ -94,8 +94,21 @@ report it.
 npm run relay:install -- --dry-run   show the change, write nothing, ask nothing
 npm run relay:install               show it as a diff, ask, then do as told
 npm run relay:install -- --yes      do it without asking
-npm run relay:uninstall             take the hooks back out
+npm run relay:install -- --wait     also install the hook that waits for an answer
+npm run relay:uninstall             take the non-blocking hooks back out
+npm run relay:uninstall:wait        take out only the hook that waits
 ```
+
+The two removals are separate commands, and the difference is the whole reason
+they are two: "remove the wait" and "remove everything" are different things a
+person can mean, and one command with an optional mode makes the second quietly
+become the first whenever it is handed both. `relay:uninstall` says on the way out
+that the waiting hook is still installed; `relay:uninstall:wait` says the mascot
+is still installed.
+
+Both remove only the entries that run this project's programs, and neither
+restores a backup — restoring would throw away edits made since installing. The
+copy taken before the first install stays at `~/.claude/spark-backups/`.
 
 `~/.claude/settings.json` is user state the user did not ask us to write, and it
 is the file that decides whether their agent runs. So planning and writing are
@@ -114,6 +127,25 @@ Hooks already in the file survive — they are identified by the command they ru
 so only entries invoking the relay are added or removed. Uninstalling is surgical
 rather than a restore, so edits made since installing are not thrown away, and
 the backup in `spark-backups/` is kept either way.
+
+## Which path the hook names
+
+An installation's, not a checkout's. `src/relay/binary.ts` owns both answers —
+where the build puts the two programs, and where an installed companion keeps
+them — and `resolvePrograms` prefers the second: the directory beside the
+window's own executable, or the `resources` directory a packaged install keeps
+them in. The build output when there is no installation, which is what a
+developer has before a full build.
+
+That preference is the whole point. A hook carries an absolute path, and an
+absolute path into a clone works only while the clone stays exactly where it is;
+when it moves the hook fails once per event, silently, because a hook that fails
+is indistinguishable from an agent with nothing to report. Resolving against the
+installation means the answer travels with the files it names.
+
+`npm run relay:install` prints which answer it used before it prints the diff,
+and `npm run doctor` reports both — so "it installed the wrong one" is answerable
+without reading any of this.
 
 ## Out of scope
 

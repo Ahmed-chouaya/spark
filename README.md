@@ -1,7 +1,7 @@
 # Spark
 
-A mascot for your coding agent. It sits on your screen and shows what Claude Code
-is doing, and it asks you when the agent wants to do something.
+A mascot for Claude Code. It shows you what your agent is doing, and it asks you
+when the agent wants to do something.
 
 ```
   Claude Code fires a hook
@@ -60,15 +60,24 @@ The mascot shows what the agent is doing — thinking, working, blocked, waiting
 you, done, tired. When something blocks, the window appears; when nothing is
 blocked it is hidden, **unless the platform can keep a surface above unfocused
 windows**, in which case it stays out and is simply quiet. Which of those happens
-is decided by asking the platform, not by assuming. On GNOME Wayland the answer
-is no, so the mascot only appears when it has something to say. On Windows 11 the
-answer is yes, so it can stay.
+is decided by asking the platform, not by assuming.
+
+On GNOME Wayland the answer is **no** — a compositor owns the stacking order and
+there is no way to ask it — so the mascot appears when it has something to say
+and is otherwise absent. On Windows 11 a persistent surface **has been observed
+by hand**, in an earlier version of this program; this window has never been run
+there, so that row is what the code *will* do rather than what it did. The
+measured table further down says which is which.
 
 ## How to install
 
-You need **Node 22+**, a **Rust toolchain** (`cargo`), and the platform's own C
-build tools for the window (on Debian/Ubuntu: `libwebkit2gtk-4.1-dev
-libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev build-essential`).
+You need **Node 22 or newer** (24 is what this was built on; the scripts are run
+directly by `node`, with no build step), a **Rust toolchain** (`cargo`), and the
+platform's C build tools for the window. On Debian or Ubuntu:
+
+```
+sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev build-essential
+```
 
 ```
 git clone <this repository> spark
@@ -112,7 +121,7 @@ npm run companion
 ```
 
 That derives the channel's address, builds the shell's page, and opens the window.
-Leave it running. It prints the address it is listening on.
+Leave it running — Ctrl-C stops it. It prints the address it is listening on.
 
 Then, **in a second terminal**, install the hooks:
 
@@ -184,6 +193,11 @@ round trip, end to end, on real programs.
 on one page, each labelled with its own name. It is the quickest way to see what
 "working" looks like without waiting for an agent to block.
 
+`npm run relay:verify` is the only command here that needs Claude Code itself on
+`PATH` with a model that works on your machine. It installs into a scratch
+directory rather than your own settings, so it is safe, but it does make one real
+call. `npm run decision:verify` needs no agent at all.
+
 ## On Windows
 
 Everything above is the same on Windows, with one difference in the shell. In
@@ -254,7 +268,7 @@ row.**
 ## The suite
 
 ```
-npm run verify     # typecheck plus 636 tests
+npm run verify     # typecheck plus 659 tests
 npm run test:e2e   # the rendered surface, driven through a real browser (32)
 ```
 
